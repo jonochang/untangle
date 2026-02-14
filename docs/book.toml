@@ -1,0 +1,10 @@
+[book]
+authors = ["Untangle Contributors"]
+language = "en"
+src = "src"
+title = "Untangle Documentation"
+description = "A fast, multi-language dependency graph analyzer that catches structural regressions in CI"
+
+[output.html]
+git-repository-url = "https://github.com/user/untangle"
+edit-url-template = "https://github.com/user/untangle/edit/master/docs/{path}"

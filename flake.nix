@@ -37,6 +37,9 @@
             pkgs.cargo-llvm-cov
             pkgs.cargo-mutants
             pkgs.cargo-insta
+
+            # Documentation
+            pkgs.mdbook
           ];
 
           env = {
