@@ -48,6 +48,16 @@ pub fn write_analyze_text<W: Write>(
         "SCCs:     {} (largest: {}, total nodes: {})",
         summary.scc_count, summary.largest_scc_size, summary.total_nodes_in_sccs
     )?;
+    writeln!(
+        writer,
+        "Depth:    max={}  avg={:.2}",
+        summary.max_depth, summary.avg_depth
+    )?;
+    writeln!(
+        writer,
+        "Complexity: {} (nodes + edges + max_depth)",
+        summary.total_complexity
+    )?;
     writeln!(writer)?;
 
     // Hotspots

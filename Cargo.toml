@@ -2,7 +2,7 @@
 name = "untangle"
 version = "0.1.0"
 edition = "2021"
-description = "Module-level dependency graph analyzer for Python, Ruby, and Go"
+description = "Module-level dependency graph analyzer for Python, Ruby, Go, and Rust"
 license = "MIT"
 
 [[bin]]
@@ -21,6 +21,7 @@ tree-sitter = "0.24"
 tree-sitter-python = "0.23"
 tree-sitter-ruby = "0.23"
 tree-sitter-go = "0.23"
+tree-sitter-rust = "0.23"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

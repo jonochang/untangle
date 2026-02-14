@@ -3,6 +3,7 @@ pub mod go;
 pub mod python;
 pub mod resolver;
 pub mod ruby;
+pub mod rust;
 
 pub use common::RawImport;
 

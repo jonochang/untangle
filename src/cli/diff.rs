@@ -8,7 +8,9 @@ use crate::metrics::scc::find_non_trivial_sccs;
 use crate::metrics::summary::Summary;
 use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, SourceLocation};
-use crate::parse::{go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, ParseFrontend};
+use crate::parse::{
+    go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, rust::RustFrontend, ParseFrontend,
+};
 use crate::walk::Language;
 use clap::Args;
 use petgraph::visit::EdgeRef;
@@ -191,6 +193,20 @@ fn build_graph_at_ref(
         }
         Language::Python => Box::new(PythonFrontend::new()),
         Language::Ruby => Box::new(RubyFrontend::new()),
+        Language::Rust => {
+            // Try to read Cargo.toml at this ref
+            let cargo_toml =
+                crate::git::read_file_at_ref(repo, reference, Path::new("Cargo.toml")).ok();
+            let crate_name = cargo_toml.and_then(|content| {
+                String::from_utf8(content)
+                    .ok()
+                    .and_then(|s| RustFrontend::parse_crate_name(&s))
+            });
+            Box::new(match crate_name {
+                Some(name) => RustFrontend::with_crate_name(name),
+                None => RustFrontend::new(),
+            })
+        }
     };
 
     let mut builder = GraphBuilder::new();
@@ -457,6 +473,9 @@ fn compute_graph_diff(
             mean_fanout_delta: ((head_summary.mean_fanout - base_summary.mean_fanout) * 100.0)
                 .round()
                 / 100.0,
+            max_depth_delta: head_summary.max_depth as isize - base_summary.max_depth as isize,
+            total_complexity_delta: head_summary.total_complexity as isize
+                - base_summary.total_complexity as isize,
         },
         new_edges,
         removed_edges,

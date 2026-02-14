@@ -194,3 +194,23 @@ fn graph_go_json_output() {
         .stdout(predicate::str::contains("\"nodes\""))
         .stdout(predicate::str::contains("\"edges\""));
 }
+
+#[test]
+fn analyze_rust_simple_crate_json() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "tests/fixtures/rust/simple_crate",
+            "--lang",
+            "rust",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"language\": \"rust\""))
+        .stdout(predicate::str::contains("\"node_count\""))
+        .stdout(predicate::str::contains("\"edge_count\""));
+}

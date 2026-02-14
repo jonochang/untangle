@@ -1,4 +1,5 @@
 use crate::graph::ir::DepGraph;
+use crate::metrics::depth;
 use crate::metrics::fanout::{fan_in, fan_out};
 use crate::metrics::scc::find_non_trivial_sccs;
 use serde::Serialize;
@@ -15,6 +16,9 @@ pub struct Summary {
     pub scc_count: usize,
     pub largest_scc_size: usize,
     pub total_nodes_in_sccs: usize,
+    pub max_depth: usize,
+    pub avg_depth: f64,
+    pub total_complexity: usize,
 }
 
 impl Summary {
@@ -32,6 +36,9 @@ impl Summary {
                 scc_count: 0,
                 largest_scc_size: 0,
                 total_nodes_in_sccs: 0,
+                max_depth: 0,
+                avg_depth: 0.0,
+                total_complexity: 0,
             };
         }
 
@@ -52,6 +59,11 @@ impl Summary {
         let largest_scc_size = sccs.iter().map(|s| s.size).max().unwrap_or(0);
         let total_nodes_in_sccs: usize = sccs.iter().map(|s| s.size).sum();
 
+        let max_depth = depth::max_depth(graph);
+        let avg_depth = depth::avg_depth(graph);
+        let edge_count = graph.edge_count();
+        let total_complexity = node_count + edge_count + max_depth;
+
         Self {
             mean_fanout: (mean_fanout * 100.0).round() / 100.0,
             p90_fanout: fanouts[p90_idx],
@@ -62,6 +74,9 @@ impl Summary {
             scc_count,
             largest_scc_size,
             total_nodes_in_sccs,
+            max_depth,
+            avg_depth,
+            total_complexity,
         }
     }
 }
@@ -94,10 +109,14 @@ mod tests {
         let summary = Summary::from_graph(&graph);
         assert_eq!(summary.mean_fanout, 0.0);
         assert_eq!(summary.scc_count, 0);
+        assert_eq!(summary.max_depth, 0);
+        assert_eq!(summary.avg_depth, 0.0);
+        assert_eq!(summary.total_complexity, 0);
     }
 
     #[test]
     fn summary_linear_graph() {
+        // 3 nodes, 2 edges, max_depth=2 → total_complexity = 3+2+2 = 7
         let mut graph = DepGraph::new();
         let a = graph.add_node(make_node("a"));
         let b = graph.add_node(make_node("b"));
@@ -108,5 +127,8 @@ mod tests {
         assert_eq!(summary.max_fanout, 1);
         assert_eq!(summary.max_fanin, 1);
         assert_eq!(summary.scc_count, 0);
+        assert_eq!(summary.max_depth, 2);
+        assert_eq!(summary.avg_depth, 2.0);
+        assert_eq!(summary.total_complexity, 7);
     }
 }

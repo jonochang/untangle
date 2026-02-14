@@ -34,6 +34,8 @@ pub struct SummaryDelta {
     pub scc_count_delta: isize,
     pub largest_scc_size_delta: isize,
     pub mean_fanout_delta: f64,
+    pub max_depth_delta: isize,
+    pub total_complexity_delta: isize,
 }
 
 #[derive(Debug, Clone, Serialize)]

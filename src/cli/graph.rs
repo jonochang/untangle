@@ -2,7 +2,9 @@ use crate::errors::{Result, UntangleError};
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, SourceLocation};
-use crate::parse::{go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, ParseFrontend};
+use crate::parse::{
+    go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, rust::RustFrontend, ParseFrontend,
+};
 use crate::walk::{self, Language};
 use clap::Args;
 use std::path::PathBuf;
@@ -77,6 +79,13 @@ pub fn run(args: &GraphArgs) -> Result<()> {
         }
         Language::Python => Box::new(PythonFrontend::new()),
         Language::Ruby => Box::new(RubyFrontend::new()),
+        Language::Rust => {
+            let crate_name = RustFrontend::read_cargo_toml(&root);
+            Box::new(match crate_name {
+                Some(name) => RustFrontend::with_crate_name(name),
+                None => RustFrontend::new(),
+            })
+        }
     };
 
     let mut builder = GraphBuilder::new();

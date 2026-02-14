@@ -5,7 +5,9 @@ use crate::metrics::summary::Summary;
 use crate::output::json::Metadata;
 use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, RawImport, SourceLocation};
-use crate::parse::{go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, ParseFrontend};
+use crate::parse::{
+    go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, rust::RustFrontend, ParseFrontend,
+};
 use crate::walk::{self, Language};
 use clap::Args;
 use rayon::prelude::*;
@@ -102,6 +104,13 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         None
     };
 
+    // Read Cargo.toml for Rust projects
+    let rust_crate_name = if lang == Language::Rust {
+        RustFrontend::read_cargo_toml(&root)
+    } else {
+        None
+    };
+
     let files_skipped = AtomicUsize::new(0);
     let project_files = files.clone();
 
@@ -140,6 +149,10 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 }),
                 Language::Python => Box::new(PythonFrontend::new()),
                 Language::Ruby => Box::new(RubyFrontend::new()),
+                Language::Rust => Box::new(match &rust_crate_name {
+                    Some(name) => RustFrontend::with_crate_name(name.clone()),
+                    None => RustFrontend::new(),
+                }),
             };
 
             let imports = frontend.extract_imports(&source, file_path);
@@ -178,6 +191,10 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         }),
         Language::Python => Box::new(PythonFrontend::new()),
         Language::Ruby => Box::new(RubyFrontend::new()),
+        Language::Rust => Box::new(match &rust_crate_name {
+            Some(name) => RustFrontend::with_crate_name(name.clone()),
+            None => RustFrontend::new(),
+        }),
     };
 
     for result in &parse_results {

@@ -9,6 +9,7 @@ pub enum Language {
     Python,
     Ruby,
     Go,
+    Rust,
 }
 
 impl Language {
@@ -18,6 +19,7 @@ impl Language {
             Language::Python => &["py"],
             Language::Ruby => &["rb"],
             Language::Go => &["go"],
+            Language::Rust => &["rs"],
         }
     }
 
@@ -25,7 +27,7 @@ impl Language {
     pub fn default_excludes(&self) -> Vec<String> {
         match self {
             Language::Go => vec!["*_test.go".to_string()],
-            _ => vec![],
+            Language::Rust | Language::Python | Language::Ruby => vec![],
         }
     }
 }
@@ -38,6 +40,7 @@ impl std::str::FromStr for Language {
             "python" | "py" => Ok(Language::Python),
             "ruby" | "rb" => Ok(Language::Ruby),
             "go" => Ok(Language::Go),
+            "rust" | "rs" => Ok(Language::Rust),
             _ => Err(format!("unsupported language: {s}")),
         }
     }
@@ -49,6 +52,7 @@ impl std::fmt::Display for Language {
             Language::Python => write!(f, "python"),
             Language::Ruby => write!(f, "ruby"),
             Language::Go => write!(f, "go"),
+            Language::Rust => write!(f, "rust"),
         }
     }
 }
@@ -161,6 +165,7 @@ pub fn detect_language(root: &Path) -> Option<Language> {
     let mut py_count = 0usize;
     let mut rb_count = 0usize;
     let mut go_count = 0usize;
+    let mut rs_count = 0usize;
 
     for entry in walker.flatten() {
         let path = entry.path();
@@ -171,11 +176,12 @@ pub fn detect_language(root: &Path) -> Option<Language> {
             Some("py") => py_count += 1,
             Some("rb") => rb_count += 1,
             Some("go") => go_count += 1,
+            Some("rs") => rs_count += 1,
             _ => {}
         }
     }
 
-    let max = py_count.max(rb_count).max(go_count);
+    let max = py_count.max(rb_count).max(go_count).max(rs_count);
     if max == 0 {
         return None;
     }
@@ -184,6 +190,8 @@ pub fn detect_language(root: &Path) -> Option<Language> {
         Some(Language::Python)
     } else if max == go_count {
         Some(Language::Go)
+    } else if max == rs_count {
+        Some(Language::Rust)
     } else {
         Some(Language::Ruby)
     }
@@ -199,7 +207,9 @@ mod tests {
         assert_eq!("py".parse::<Language>().unwrap(), Language::Python);
         assert_eq!("ruby".parse::<Language>().unwrap(), Language::Ruby);
         assert_eq!("go".parse::<Language>().unwrap(), Language::Go);
-        assert!("rust".parse::<Language>().is_err());
+        assert_eq!("rust".parse::<Language>().unwrap(), Language::Rust);
+        assert_eq!("rs".parse::<Language>().unwrap(), Language::Rust);
+        assert!("java".parse::<Language>().is_err());
     }
 
     #[test]
