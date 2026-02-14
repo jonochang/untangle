@@ -6,13 +6,26 @@ use crate::config::{OverrideEntry, ResolvedRules};
 /// - If `enabled=false`, the caller should skip the module entirely.
 /// - First matching glob wins.
 /// - Override block replaces the entire rule object (un-specified fields revert to built-in defaults).
+/// - Matches against both the module name (dot-separated) and optional file path.
 pub fn apply_overrides(
     module_path: &str,
     base_rules: &ResolvedRules,
     overrides: &[(globset::GlobMatcher, OverrideEntry)],
 ) -> (ResolvedRules, bool) {
+    apply_overrides_with_file_path(module_path, None, base_rules, overrides)
+}
+
+/// Apply per-path overrides, matching against both module name and file path.
+pub fn apply_overrides_with_file_path(
+    module_path: &str,
+    file_path: Option<&str>,
+    base_rules: &ResolvedRules,
+    overrides: &[(globset::GlobMatcher, OverrideEntry)],
+) -> (ResolvedRules, bool) {
     for (matcher, entry) in overrides {
-        if matcher.is_match(module_path) {
+        let matches =
+            matcher.is_match(module_path) || file_path.is_some_and(|fp| matcher.is_match(fp));
+        if matches {
             if !entry.enabled {
                 return (base_rules.clone(), false);
             }

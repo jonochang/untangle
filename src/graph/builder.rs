@@ -36,6 +36,7 @@ impl GraphBuilder {
             .trim_end_matches(".py")
             .trim_end_matches(".rb")
             .trim_end_matches(".go")
+            .trim_end_matches(".rs")
             .to_string();
         let idx = self.graph.add_node(GraphNode {
             kind: NodeKind::Module,

@@ -236,11 +236,12 @@ pub fn generate_insights_with_config(
     let mut insights = Vec::new();
     let mut god_modules: HashSet<String> = HashSet::new();
 
-    // Collect per-node metrics
+    // Collect per-node metrics (including file path for override matching)
     let node_metrics: Vec<_> = graph
         .node_indices()
         .map(|idx| {
             let name = graph[idx].name.clone();
+            let file_path = graph[idx].path.to_string_lossy().to_string();
             let fo = fan_out(graph, idx);
             let fi = fan_in(graph, idx);
             let edge_weights: Vec<usize> = graph
@@ -248,15 +249,20 @@ pub fn generate_insights_with_config(
                 .map(|e| e.weight().weight)
                 .collect();
             let entropy = shannon_entropy(&edge_weights);
-            (name, fo, fi, entropy)
+            (name, file_path, fo, fi, entropy)
         })
         .collect();
 
     // God Module
     if rules.god_module.enabled {
-        for (name, fo, fi, _entropy) in &node_metrics {
+        for (name, file_path, fo, fi, _entropy) in &node_metrics {
             let (effective_rules, enabled) =
-                crate::config::overrides::apply_overrides(name, rules, overrides);
+                crate::config::overrides::apply_overrides_with_file_path(
+                    name,
+                    Some(file_path),
+                    rules,
+                    overrides,
+                );
             if !enabled || !effective_rules.god_module.enabled {
                 continue;
             }
@@ -298,12 +304,17 @@ pub fn generate_insights_with_config(
 
     // High Fan-out
     if rules.high_fanout.enabled {
-        for (name, fo, _fi, _entropy) in &node_metrics {
+        for (name, file_path, fo, _fi, _entropy) in &node_metrics {
             if god_modules.contains(name) {
                 continue;
             }
             let (effective_rules, enabled) =
-                crate::config::overrides::apply_overrides(name, rules, overrides);
+                crate::config::overrides::apply_overrides_with_file_path(
+                    name,
+                    Some(file_path),
+                    rules,
+                    overrides,
+                );
             if !enabled || !effective_rules.high_fanout.enabled {
                 continue;
             }
@@ -403,12 +414,17 @@ pub fn generate_insights_with_config(
 
     // High Entropy
     if rules.high_entropy.enabled {
-        for (name, fo, _fi, entropy) in &node_metrics {
+        for (name, file_path, fo, _fi, entropy) in &node_metrics {
             if god_modules.contains(name) {
                 continue;
             }
             let (effective_rules, enabled) =
-                crate::config::overrides::apply_overrides(name, rules, overrides);
+                crate::config::overrides::apply_overrides_with_file_path(
+                    name,
+                    Some(file_path),
+                    rules,
+                    overrides,
+                );
             if !enabled || !effective_rules.high_entropy.enabled {
                 continue;
             }

@@ -11,6 +11,7 @@ Untangle builds module-level dependency graphs from your source code, computes s
 | Python | Module (file-level) | tree-sitter |
 | Ruby | File-level | tree-sitter |
 | Go | Package-level | tree-sitter |
+| Rust | Module (file-level) | tree-sitter |
 
 ## Quick Start
 
@@ -102,11 +103,11 @@ $ untangle analyze ./src --lang python --format text
 cargo install untangle
 
 # From source
-git clone https://github.com/user/untangle && cd untangle
+git clone https://github.com/jonochang/untangle && cd untangle
 cargo build --release
 ```
 
-Pre-built binaries for Linux, macOS, and Windows are available on the [releases page](https://github.com/user/untangle/releases).
+Pre-built binaries for Linux, macOS, and Windows are available on the [releases page](https://github.com/jonochang/untangle/releases).
 
 ## How It Works
 

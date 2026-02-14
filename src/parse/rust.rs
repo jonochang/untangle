@@ -36,12 +36,22 @@ impl RustFrontend {
     }
 
     /// Classify an import path.
-    fn classify_import(path: &str) -> ImportConfidence {
+    fn classify_import(&self, path: &str) -> ImportConfidence {
         let first_segment = path.split("::").next().unwrap_or(path);
         match first_segment {
             "crate" | "super" | "self" => ImportConfidence::Resolved,
             "std" | "core" | "alloc" => ImportConfidence::External,
-            _ => ImportConfidence::External,
+            _ => {
+                // Check if the import matches the crate's own name (with - normalized to _)
+                if let Some(ref crate_name) = self.crate_name {
+                    let normalized_crate = crate_name.replace('-', "_");
+                    let normalized_segment = first_segment.replace('-', "_");
+                    if normalized_crate == normalized_segment {
+                        return ImportConfidence::Resolved;
+                    }
+                }
+                ImportConfidence::External
+            }
         }
     }
 
@@ -198,7 +208,7 @@ impl ParseFrontend for RustFrontend {
                     if path.is_empty() {
                         continue;
                     }
-                    let confidence = Self::classify_import(&path);
+                    let confidence = self.classify_import(&path);
                     imports.push(RawImport {
                         raw_path: path,
                         source_file: file_path.to_path_buf(),
@@ -225,23 +235,29 @@ impl ParseFrontend for RustFrontend {
         }
 
         let path = &raw.raw_path;
+        // Strip trailing ::* for glob imports (resolve the parent module)
+        let path = path.strip_suffix("::*").unwrap_or(path);
         let first_segment = path.split("::").next().unwrap_or(path);
+
+        // Normalize source_file to project-relative for super/self resolution
+        let relative_source = raw
+            .source_file
+            .strip_prefix(project_root)
+            .unwrap_or(&raw.source_file);
 
         match first_segment {
             "crate" => {
                 // crate::foo::bar -> strip "crate::", convert :: to /, look for src/foo/bar.rs or src/foo/bar/mod.rs
                 let rest = path.strip_prefix("crate::")?;
-                // Take only the module path (first two segments or the directory path)
-                // For `crate::module::Item`, we want `module` (the file-level module)
                 let module_path = Self::to_file_module_path(rest);
                 let candidate = PathBuf::from("src").join(module_path.replace("::", "/"));
                 Self::find_module_file(&candidate, project_root, project_files)
             }
             "super" => {
                 // super::foo -> go up from source file's directory
-                let source_dir = raw.source_file.parent()?;
+                let source_dir = relative_source.parent()?;
                 // If source file is foo/mod.rs, parent is the module dir; go up one more
-                let base_dir = if raw.source_file.file_name()?.to_str()? == "mod.rs" {
+                let base_dir = if relative_source.file_name()?.to_str()? == "mod.rs" {
                     source_dir.parent()?
                 } else {
                     source_dir
@@ -254,13 +270,26 @@ impl ParseFrontend for RustFrontend {
             }
             "self" => {
                 // self::foo -> same directory as source file
-                let source_dir = raw.source_file.parent()?;
+                let source_dir = relative_source.parent()?;
                 let rest = path.strip_prefix("self::")?;
                 let module_path = Self::to_file_module_path(rest);
                 let candidate = source_dir.join(module_path.replace("::", "/"));
                 Self::find_module_file(&candidate, project_root, project_files)
             }
-            _ => None,
+            _ => {
+                // Handle crate-name imports: `use my_crate::foo::bar` → treat like `crate::foo::bar`
+                if let Some(ref crate_name) = self.crate_name {
+                    let normalized_crate = crate_name.replace('-', "_");
+                    let normalized_segment = first_segment.replace('-', "_");
+                    if normalized_crate == normalized_segment {
+                        let rest = path.strip_prefix(first_segment)?.strip_prefix("::")?;
+                        let module_path = Self::to_file_module_path(rest);
+                        let candidate = PathBuf::from("src").join(module_path.replace("::", "/"));
+                        return Self::find_module_file(&candidate, project_root, project_files);
+                    }
+                }
+                None
+            }
         }
     }
 }
@@ -367,26 +396,97 @@ mod tests {
 
     #[test]
     fn classifies_crate_as_resolved() {
+        let frontend = RustFrontend::new();
         assert_eq!(
-            RustFrontend::classify_import("crate::foo::bar"),
+            frontend.classify_import("crate::foo::bar"),
             ImportConfidence::Resolved
         );
     }
 
     #[test]
     fn classifies_std_as_external() {
+        let frontend = RustFrontend::new();
         assert_eq!(
-            RustFrontend::classify_import("std::collections::HashMap"),
+            frontend.classify_import("std::collections::HashMap"),
             ImportConfidence::External
         );
         assert_eq!(
-            RustFrontend::classify_import("core::fmt::Debug"),
+            frontend.classify_import("core::fmt::Debug"),
             ImportConfidence::External
         );
         assert_eq!(
-            RustFrontend::classify_import("alloc::vec::Vec"),
+            frontend.classify_import("alloc::vec::Vec"),
             ImportConfidence::External
         );
+    }
+
+    #[test]
+    fn classifies_crate_name_import_as_resolved() {
+        let frontend = RustFrontend::with_crate_name("my-crate".to_string());
+        assert_eq!(
+            frontend.classify_import("my_crate::module::Item"),
+            ImportConfidence::Resolved
+        );
+    }
+
+    #[test]
+    fn resolves_crate_name_import() {
+        let frontend = RustFrontend::with_crate_name("my-crate".to_string());
+        let project_root = Path::new("/project");
+        let project_files = vec![
+            PathBuf::from("/project/src/main.rs"),
+            PathBuf::from("/project/src/module.rs"),
+        ];
+        let raw = RawImport {
+            raw_path: "my_crate::module::Item".into(),
+            source_file: PathBuf::from("src/main.rs"),
+            line: 1,
+            column: None,
+            kind: ImportKind::Direct,
+            confidence: ImportConfidence::Resolved,
+        };
+        let resolved = frontend.resolve(&raw, project_root, &project_files);
+        assert_eq!(resolved, Some(PathBuf::from("src/module.rs")));
+    }
+
+    #[test]
+    fn resolves_glob_import() {
+        let frontend = RustFrontend::new();
+        let project_root = Path::new("/project");
+        let project_files = vec![
+            PathBuf::from("/project/src/main.rs"),
+            PathBuf::from("/project/src/module.rs"),
+        ];
+        let raw = RawImport {
+            raw_path: "crate::module::*".into(),
+            source_file: PathBuf::from("src/main.rs"),
+            line: 1,
+            column: None,
+            kind: ImportKind::Direct,
+            confidence: ImportConfidence::Resolved,
+        };
+        let resolved = frontend.resolve(&raw, project_root, &project_files);
+        assert_eq!(resolved, Some(PathBuf::from("src/module.rs")));
+    }
+
+    #[test]
+    fn resolves_self_with_absolute_source_path() {
+        let frontend = RustFrontend::new();
+        let project_root = Path::new("/project");
+        let project_files = vec![
+            PathBuf::from("/project/src/foo/mod.rs"),
+            PathBuf::from("/project/src/foo/bar.rs"),
+        ];
+        let raw = RawImport {
+            raw_path: "self::bar::Thing".into(),
+            source_file: PathBuf::from("/project/src/foo/mod.rs"),
+            line: 1,
+            column: None,
+            kind: ImportKind::Direct,
+            confidence: ImportConfidence::Resolved,
+        };
+        let resolved = frontend.resolve(&raw, project_root, &project_files);
+        assert_eq!(resolved, Some(PathBuf::from("src/foo/bar.rs")));
     }
 
     #[test]

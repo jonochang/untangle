@@ -6,18 +6,30 @@ use streaming_iterator::StreamingIterator;
 pub struct GoFrontend {
     /// Module path from go.mod (e.g., "github.com/user/project")
     module_path: Option<String>,
+    /// Whether to exclude stdlib imports (default: true)
+    exclude_stdlib: bool,
 }
 
 impl GoFrontend {
     pub fn new() -> Self {
-        Self { module_path: None }
+        Self {
+            module_path: None,
+            exclude_stdlib: true,
+        }
     }
 
     /// Create a GoFrontend with the module path read from go.mod.
     pub fn with_module_path(module_path: String) -> Self {
         Self {
             module_path: Some(module_path),
+            exclude_stdlib: true,
         }
+    }
+
+    /// Set whether to exclude stdlib imports.
+    pub fn with_exclude_stdlib(mut self, exclude: bool) -> Self {
+        self.exclude_stdlib = exclude;
+        self
     }
 
     /// Read the module path from a go.mod file.
@@ -42,7 +54,12 @@ impl GoFrontend {
         }
         // stdlib packages have no dots in their path
         if !import_path.contains('.') {
-            return ImportConfidence::External;
+            return if self.exclude_stdlib {
+                ImportConfidence::External
+            } else {
+                // Include stdlib as resolved when exclude_stdlib is false
+                ImportConfidence::Resolved
+            };
         }
         ImportConfidence::External
     }
@@ -111,23 +128,39 @@ impl ParseFrontend for GoFrontend {
         &self,
         raw: &RawImport,
         _project_root: &Path,
-        _project_files: &[PathBuf],
+        project_files: &[PathBuf],
     ) -> Option<PathBuf> {
         if raw.confidence != ImportConfidence::Resolved {
             return None;
         }
 
-        let module_path = self.module_path.as_ref()?;
-        let relative = raw
-            .raw_path
-            .strip_prefix(module_path)?
-            .trim_start_matches('/');
+        if let Some(ref module_path) = self.module_path {
+            let relative = raw
+                .raw_path
+                .strip_prefix(module_path)?
+                .trim_start_matches('/');
 
-        if relative.is_empty() {
-            return None;
+            if relative.is_empty() {
+                return None;
+            }
+
+            Some(PathBuf::from(relative))
+        } else {
+            // Fallback: no go.mod — try directory-based matching
+            // Check if any project file lives under a directory matching the import path
+            let import_path = &raw.raw_path;
+            for file in project_files {
+                let file_str = file.to_string_lossy();
+                if file_str.contains(import_path) {
+                    return Some(PathBuf::from(import_path));
+                }
+            }
+            tracing::warn!(
+                "No go.mod found; could not resolve import '{}'",
+                raw.raw_path
+            );
+            None
         }
-
-        Some(PathBuf::from(relative))
     }
 }
 

@@ -171,12 +171,15 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
 
             // Each thread creates its own frontend (which creates its own Parser)
             let frontend: Box<dyn ParseFrontend> = match lang {
-                Language::Go => Box::new(match &go_module_path {
-                    Some(mp) => GoFrontend::with_module_path(mp.clone()),
-                    None => GoFrontend::new(),
-                }),
+                Language::Go => {
+                    let fe = match &go_module_path {
+                        Some(mp) => GoFrontend::with_module_path(mp.clone()),
+                        None => GoFrontend::new(),
+                    };
+                    Box::new(fe.with_exclude_stdlib(config.go.exclude_stdlib))
+                }
                 Language::Python => Box::new(PythonFrontend::new()),
-                Language::Ruby => Box::new(RubyFrontend::new()),
+                Language::Ruby => Box::new(RubyFrontend::with_load_paths(config.ruby_load_paths())),
                 Language::Rust => Box::new(match &rust_crate_name {
                     Some(name) => RustFrontend::with_crate_name(name.clone()),
                     None => RustFrontend::new(),
@@ -184,10 +187,16 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
             };
 
             let imports = frontend.extract_imports(&source, file_path);
-            let source_module = file_path
-                .strip_prefix(&root)
-                .unwrap_or(file_path)
-                .to_path_buf();
+            let relative_path = file_path.strip_prefix(&root).unwrap_or(file_path);
+            // For Go, use the parent directory as the source module (package-level granularity)
+            let source_module = if lang == Language::Go {
+                relative_path
+                    .parent()
+                    .unwrap_or(relative_path)
+                    .to_path_buf()
+            } else {
+                relative_path.to_path_buf()
+            };
 
             if let Some(ref pb) = progress {
                 pb.inc(1);
@@ -213,12 +222,15 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
 
     // Create a single frontend for resolution
     let resolver: Box<dyn ParseFrontend> = match lang {
-        Language::Go => Box::new(match &go_module_path {
-            Some(mp) => GoFrontend::with_module_path(mp.clone()),
-            None => GoFrontend::new(),
-        }),
+        Language::Go => {
+            let fe = match &go_module_path {
+                Some(mp) => GoFrontend::with_module_path(mp.clone()),
+                None => GoFrontend::new(),
+            };
+            Box::new(fe.with_exclude_stdlib(config.go.exclude_stdlib))
+        }
         Language::Python => Box::new(PythonFrontend::new()),
-        Language::Ruby => Box::new(RubyFrontend::new()),
+        Language::Ruby => Box::new(RubyFrontend::with_load_paths(config.ruby_load_paths())),
         Language::Rust => Box::new(match &rust_crate_name {
             Some(name) => RustFrontend::with_crate_name(name.clone()),
             None => RustFrontend::new(),
@@ -366,5 +378,22 @@ fn chrono_now() -> String {
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap_or_default();
     let secs = duration.as_secs();
-    format!("1970-01-01T00:00:00Z+{}s", secs)
+    // Civil date algorithm from UNIX timestamp (no external dependency)
+    let days = (secs / 86400) as i64;
+    let time_secs = secs % 86400;
+    let hours = time_secs / 3600;
+    let minutes = (time_secs % 3600) / 60;
+    let seconds = time_secs % 60;
+    // Days since 0000-03-01 (shifted epoch for leap year handling)
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
 }

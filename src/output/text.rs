@@ -1,4 +1,5 @@
 use crate::errors::Result;
+use crate::graph::diff::DiffResult;
 use crate::graph::ir::DepGraph;
 use crate::insights::{Insight, InsightSeverity};
 use crate::metrics::scc::SccInfo;
@@ -134,6 +135,108 @@ pub fn write_analyze_text<W: Write>(
         "Completed in {:.2}s ({:.0} modules/sec)",
         metadata.elapsed_ms as f64 / 1000.0,
         metadata.modules_per_second
+    )?;
+
+    Ok(())
+}
+
+/// Write diff output as human-readable text.
+pub fn write_diff_text<W: Write>(writer: &mut W, result: &DiffResult) -> Result<()> {
+    writeln!(writer, "Untangle Diff Report")?;
+    writeln!(writer, "====================")?;
+    writeln!(writer)?;
+    writeln!(writer, "Base: {}", result.base_ref)?;
+    writeln!(writer, "Head: {}", result.head_ref)?;
+    writeln!(writer, "Verdict: {:?}", result.verdict)?;
+    if !result.reasons.is_empty() {
+        writeln!(writer, "Violations: {}", result.reasons.join(", "))?;
+    }
+    writeln!(writer)?;
+
+    // Summary delta
+    let d = &result.summary_delta;
+    writeln!(writer, "Summary")?;
+    writeln!(writer, "-------")?;
+    writeln!(
+        writer,
+        "Nodes:       +{} / -{}",
+        d.nodes_added, d.nodes_removed
+    )?;
+    writeln!(
+        writer,
+        "Edges:       +{} / -{} (net {:+})",
+        d.edges_added, d.edges_removed, d.net_edge_change
+    )?;
+    writeln!(writer, "Mean fanout: {:+.2}", d.mean_fanout_delta)?;
+    writeln!(writer, "Mean entropy: {:+.2}", d.mean_entropy_delta)?;
+    writeln!(
+        writer,
+        "SCCs:        {:+} (largest: {:+})",
+        d.scc_count_delta, d.largest_scc_size_delta
+    )?;
+    writeln!(writer)?;
+
+    // New edges
+    if !result.new_edges.is_empty() {
+        writeln!(writer, "New Edges ({})", result.new_edges.len())?;
+        writeln!(writer, "{:-<60}", "")?;
+        for edge in &result.new_edges {
+            writeln!(writer, "  {} -> {}", edge.from, edge.to)?;
+        }
+        writeln!(writer)?;
+    }
+
+    // Removed edges
+    if !result.removed_edges.is_empty() {
+        writeln!(writer, "Removed Edges ({})", result.removed_edges.len())?;
+        writeln!(writer, "{:-<60}", "")?;
+        for edge in &result.removed_edges {
+            writeln!(writer, "  {} -> {}", edge.from, edge.to)?;
+        }
+        writeln!(writer)?;
+    }
+
+    // Fan-out changes
+    if !result.fanout_changes.is_empty() {
+        writeln!(writer, "Fan-out Changes ({})", result.fanout_changes.len())?;
+        writeln!(writer, "{:-<60}", "")?;
+        for change in &result.fanout_changes {
+            writeln!(
+                writer,
+                "  {} : {} -> {} ({:+})",
+                change.node, change.fanout_before, change.fanout_after, change.delta
+            )?;
+        }
+        writeln!(writer)?;
+    }
+
+    // SCC changes
+    if !result.scc_changes.new_sccs.is_empty() {
+        writeln!(writer, "New SCCs ({})", result.scc_changes.new_sccs.len())?;
+        writeln!(writer, "{:-<60}", "")?;
+        for scc in &result.scc_changes.new_sccs {
+            writeln!(writer, "  size={}: {}", scc.size, scc.members.join(", "))?;
+        }
+        writeln!(writer)?;
+    }
+    if !result.scc_changes.enlarged_sccs.is_empty() {
+        writeln!(
+            writer,
+            "Enlarged SCCs ({})",
+            result.scc_changes.enlarged_sccs.len()
+        )?;
+        writeln!(writer, "{:-<60}", "")?;
+        for scc in &result.scc_changes.enlarged_sccs {
+            writeln!(writer, "  size={}: {}", scc.size, scc.members.join(", "))?;
+        }
+        writeln!(writer)?;
+    }
+
+    writeln!(
+        writer,
+        "Completed in {:.2}s ({:.0} modules/sec)",
+        result.elapsed_ms as f64 / 1000.0,
+        result.modules_per_second
     )?;
 
     Ok(())

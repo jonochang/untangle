@@ -49,6 +49,14 @@ pub struct DiffArgs {
     #[arg(long)]
     pub include_tests: bool,
 
+    /// Include glob patterns
+    #[arg(long)]
+    pub include: Vec<String>,
+
+    /// Exclude glob patterns
+    #[arg(long)]
+    pub exclude: Vec<String>,
+
     /// Suppress progress output
     #[arg(long)]
     pub quiet: bool,
@@ -61,6 +69,8 @@ impl DiffArgs {
             format: self.format,
             quiet: self.quiet,
             include_tests: self.include_tests,
+            include: self.include.clone(),
+            exclude: self.exclude.clone(),
             fail_on: self.fail_on.clone(),
             ..Default::default()
         }
@@ -121,10 +131,34 @@ pub fn run(args: &DiffArgs) -> Result<()> {
             .ok_or_else(|| UntangleError::NoFiles { path: root.clone() })?,
     };
 
+    // Merge ignore_patterns into exclude list
+    let mut exclude = config.exclude.clone();
+    exclude.extend(config.ignore_patterns.iter().cloned());
+
     // Build graph at base ref
-    let base_graph = build_graph_at_ref(&repo, &args.base, &root, lang)?;
+    let base_graph = build_graph_at_ref(
+        &repo,
+        &args.base,
+        &root,
+        lang,
+        &config.include,
+        &exclude,
+        config.include_tests,
+        config.go.exclude_stdlib,
+        &config.ruby_load_paths(),
+    )?;
     // Build graph at head ref
-    let head_graph = build_graph_at_ref(&repo, &args.head, &root, lang)?;
+    let head_graph = build_graph_at_ref(
+        &repo,
+        &args.head,
+        &root,
+        lang,
+        &config.include,
+        &exclude,
+        config.include_tests,
+        config.go.exclude_stdlib,
+        &config.ruby_load_paths(),
+    )?;
 
     // Compute diff
     let diff = compute_graph_diff(&base_graph, &head_graph, &args.base, &args.head);
@@ -169,12 +203,17 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         OutputFormat::Json => {
             crate::output::json::write_diff_json(&mut stdout, &result)?;
         }
+        OutputFormat::Text => {
+            crate::output::text::write_diff_text(&mut stdout, &result)?;
+        }
         OutputFormat::Sarif => {
-            // For diff, write as JSON for now
+            eprintln!("Warning: SARIF output not yet supported for diff, falling back to JSON");
             crate::output::json::write_diff_json(&mut stdout, &result)?;
         }
-        _ => {
-            crate::output::json::write_diff_json(&mut stdout, &result)?;
+        OutputFormat::Dot => {
+            return Err(UntangleError::Config(
+                "Dot format is not applicable to diff output".to_string(),
+            ));
         }
     }
 
@@ -186,14 +225,67 @@ pub fn run(args: &DiffArgs) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_graph_at_ref(
     repo: &git2::Repository,
     reference: &str,
     root: &Path,
     lang: Language,
+    include: &[String],
+    exclude: &[String],
+    include_tests: bool,
+    go_exclude_stdlib: bool,
+    ruby_load_paths: &[PathBuf],
 ) -> Result<DepGraph> {
     let extensions = lang.extensions();
-    let files = crate::git::list_files_at_ref(repo, reference, extensions)?;
+    let all_files = crate::git::list_files_at_ref(repo, reference, extensions)?;
+
+    // Apply include/exclude/test filters
+    let exclude_set = if !exclude.is_empty() {
+        let mut builder = globset::GlobSetBuilder::new();
+        for pat in exclude {
+            if let Ok(glob) = globset::Glob::new(pat) {
+                builder.add(glob);
+            }
+        }
+        builder.build().ok()
+    } else {
+        None
+    };
+    let include_set = if !include.is_empty() {
+        let mut builder = globset::GlobSetBuilder::new();
+        for pat in include {
+            if let Ok(glob) = globset::Glob::new(pat) {
+                builder.add(glob);
+            }
+        }
+        builder.build().ok()
+    } else {
+        None
+    };
+    let files: Vec<PathBuf> = all_files
+        .into_iter()
+        .filter(|f| {
+            let path_str = f.to_string_lossy();
+            // Exclude test files unless include_tests is set
+            if !include_tests && lang == Language::Go && path_str.ends_with("_test.go") {
+                return false;
+            }
+            // Apply exclude patterns
+            if let Some(ref set) = exclude_set {
+                if set.is_match(f) {
+                    return false;
+                }
+            }
+            // Apply include patterns (if specified, only include matching files)
+            if let Some(ref set) = include_set {
+                if !set.is_match(f) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
 
     let frontend: Box<dyn ParseFrontend> = match lang {
         Language::Go => {
@@ -206,13 +298,14 @@ fn build_graph_at_ref(
                         .map(|l| l.trim().strip_prefix("module ").unwrap().trim().to_string())
                 })
             });
-            Box::new(match module_path {
+            let fe = match module_path {
                 Some(mp) => GoFrontend::with_module_path(mp),
                 None => GoFrontend::new(),
-            })
+            };
+            Box::new(fe.with_exclude_stdlib(go_exclude_stdlib))
         }
         Language::Python => Box::new(PythonFrontend::new()),
-        Language::Ruby => Box::new(RubyFrontend::new()),
+        Language::Ruby => Box::new(RubyFrontend::with_load_paths(ruby_load_paths.to_vec())),
         Language::Rust => {
             // Try to read Cargo.toml at this ref
             let cargo_toml =
@@ -249,8 +342,14 @@ fn build_graph_at_ref(
             }
 
             if let Some(target) = frontend.resolve(raw, root, &file_paths) {
+                // For Go, use the parent directory as source module (package-level)
+                let source_module = if lang == Language::Go {
+                    file_path.parent().unwrap_or(file_path).to_path_buf()
+                } else {
+                    file_path.clone()
+                };
                 builder.add_import(&ResolvedImport {
-                    source_module: file_path.clone(),
+                    source_module,
                     target_module: target,
                     location: SourceLocation {
                         file: file_path.clone(),
@@ -271,6 +370,7 @@ struct RawDiff {
     removed_edges: Vec<EdgeChange>,
     fanout_changes: Vec<FanoutChange>,
     scc_changes: SccChanges,
+    head_node_fanouts: Vec<(String, usize)>,
 }
 
 fn compute_graph_diff(
@@ -418,6 +518,52 @@ fn compute_graph_diff(
     let base_summary = Summary::from_graph(base);
     let head_summary = Summary::from_graph(head);
 
+    // Compute mean entropy for both graphs
+    let base_mean_entropy = {
+        let entropies: Vec<f64> = base
+            .node_indices()
+            .map(|idx| {
+                let weights: Vec<usize> = base
+                    .edges_directed(idx, Direction::Outgoing)
+                    .map(|e| e.weight().weight)
+                    .collect();
+                crate::metrics::entropy::shannon_entropy(&weights)
+            })
+            .collect();
+        if entropies.is_empty() {
+            0.0
+        } else {
+            entropies.iter().sum::<f64>() / entropies.len() as f64
+        }
+    };
+    let head_mean_entropy = {
+        let entropies: Vec<f64> = head
+            .node_indices()
+            .map(|idx| {
+                let weights: Vec<usize> = head
+                    .edges_directed(idx, Direction::Outgoing)
+                    .map(|e| e.weight().weight)
+                    .collect();
+                crate::metrics::entropy::shannon_entropy(&weights)
+            })
+            .collect();
+        if entropies.is_empty() {
+            0.0
+        } else {
+            entropies.iter().sum::<f64>() / entropies.len() as f64
+        }
+    };
+
+    // Collect head node fanouts for threshold checking
+    let head_node_fanouts: Vec<(String, usize)> = head
+        .node_indices()
+        .map(|idx| {
+            let name = head[idx].name.clone();
+            let fo = crate::metrics::fanout::fan_out(head, idx);
+            (name, fo)
+        })
+        .collect();
+
     // Simple SCC diff: match by Jaccard similarity
     let mut matched_base: HashSet<usize> = HashSet::new();
     let mut matched_head: HashSet<usize> = HashSet::new();
@@ -493,6 +639,7 @@ fn compute_graph_diff(
             mean_fanout_delta: ((head_summary.mean_fanout - base_summary.mean_fanout) * 100.0)
                 .round()
                 / 100.0,
+            mean_entropy_delta: ((head_mean_entropy - base_mean_entropy) * 100.0).round() / 100.0,
             max_depth_delta: head_summary.max_depth as isize - base_summary.max_depth as isize,
             total_complexity_delta: head_summary.total_complexity as isize
                 - base_summary.total_complexity as isize,
@@ -505,6 +652,7 @@ fn compute_graph_diff(
             enlarged_sccs: enlarged,
             resolved_sccs,
         },
+        head_node_fanouts,
     }
 }
 
@@ -520,9 +668,9 @@ fn evaluate_policies(diff: &RawDiff, conditions: &[FailCondition]) -> (Verdict, 
             }
             FailCondition::FanoutThreshold(threshold) => {
                 if diff
-                    .fanout_changes
+                    .head_node_fanouts
                     .iter()
-                    .any(|c| c.fanout_after > *threshold)
+                    .any(|(_, fo)| *fo > *threshold)
                 {
                     reasons.push(format!("fanout-threshold={threshold}"));
                 }
@@ -538,7 +686,7 @@ fn evaluate_policies(diff: &RawDiff, conditions: &[FailCondition]) -> (Verdict, 
                 }
             }
             FailCondition::EntropyIncrease => {
-                if diff.summary_delta.mean_fanout_delta > 0.0 {
+                if diff.summary_delta.mean_entropy_delta > 0.0 {
                     reasons.push("entropy-increase".to_string());
                 }
             }
