@@ -55,6 +55,10 @@ pub struct AnalyzeArgs {
     /// Suppress progress output
     #[arg(long)]
     pub quiet: bool,
+
+    /// Suppress insights from output
+    #[arg(long)]
+    pub no_insights: bool,
 }
 
 fn parse_language(s: &str) -> std::result::Result<Language, String> {
@@ -230,6 +234,12 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     let summary = Summary::from_graph(&graph);
     let sccs = find_non_trivial_sccs(&graph);
 
+    let insights = if args.no_insights {
+        None
+    } else {
+        Some(crate::insights::generate_insights(&graph, &summary, &sccs))
+    };
+
     let elapsed = start.elapsed();
     let elapsed_ms = elapsed.as_millis() as u64;
     let node_count = graph.node_count();
@@ -272,6 +282,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 &sccs,
                 metadata,
                 args.top,
+                insights,
             )?;
         }
         OutputFormat::Text => {
@@ -282,6 +293,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 &sccs,
                 &metadata,
                 args.top,
+                insights.as_deref(),
             )?;
         }
         OutputFormat::Dot => {

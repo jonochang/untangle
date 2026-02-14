@@ -1,6 +1,7 @@
 use crate::errors::Result;
 use crate::graph::diff::DiffResult;
 use crate::graph::ir::DepGraph;
+use crate::insights::Insight;
 use crate::metrics::scc::SccInfo;
 use crate::metrics::summary::Summary;
 use crate::parse::common::SourceLocation;
@@ -16,6 +17,8 @@ pub struct AnalyzeOutput {
     pub summary: Summary,
     pub hotspots: Vec<Hotspot>,
     pub sccs: Vec<SccInfo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub insights: Option<Vec<Insight>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -59,6 +62,7 @@ pub fn write_analyze_json<W: Write>(
     sccs: &[SccInfo],
     metadata: Metadata,
     top_n: Option<usize>,
+    insights: Option<Vec<Insight>>,
 ) -> Result<()> {
     let scc_map = crate::metrics::scc::node_scc_map(graph);
 
@@ -118,6 +122,7 @@ pub fn write_analyze_json<W: Write>(
         summary: summary.clone(),
         hotspots,
         sccs: sccs.to_vec(),
+        insights,
     };
 
     serde_json::to_writer_pretty(writer, &output)?;

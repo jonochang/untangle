@@ -1,5 +1,6 @@
 use crate::errors::Result;
 use crate::graph::ir::DepGraph;
+use crate::insights::{Insight, InsightSeverity};
 use crate::metrics::scc::SccInfo;
 use crate::metrics::summary::Summary;
 use crate::output::json::Metadata;
@@ -13,6 +14,7 @@ pub fn write_analyze_text<W: Write>(
     sccs: &[SccInfo],
     metadata: &Metadata,
     top_n: Option<usize>,
+    insights: Option<&[Insight]>,
 ) -> Result<()> {
     writeln!(writer, "Untangle Analysis Report")?;
     writeln!(writer, "========================")?;
@@ -107,6 +109,21 @@ pub fn write_analyze_text<W: Write>(
             )?;
             for member in &scc.members {
                 writeln!(writer, "  - {member}")?;
+            }
+            writeln!(writer)?;
+        }
+    }
+
+    if let Some(insights) = insights {
+        if !insights.is_empty() {
+            writeln!(writer, "Insights")?;
+            writeln!(writer, "{:-<60}", "")?;
+            for insight in insights {
+                let marker = match insight.severity {
+                    InsightSeverity::Warning => "[!]",
+                    InsightSeverity::Info => "[i]",
+                };
+                writeln!(writer, "  {} {}", marker, insight.message)?;
             }
             writeln!(writer)?;
         }

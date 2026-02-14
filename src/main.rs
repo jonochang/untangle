@@ -5,6 +5,7 @@ mod config;
 mod errors;
 mod git;
 mod graph;
+mod insights;
 mod metrics;
 mod output;
 mod parse;

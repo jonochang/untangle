@@ -214,3 +214,40 @@ fn analyze_rust_simple_crate_json() {
         .stdout(predicate::str::contains("\"node_count\""))
         .stdout(predicate::str::contains("\"edge_count\""));
 }
+
+#[test]
+fn analyze_json_contains_insights_key() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "tests/fixtures/go/simple_module",
+            "--lang",
+            "go",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"insights\""));
+}
+
+#[test]
+fn analyze_no_insights_suppresses_key() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "tests/fixtures/go/simple_module",
+            "--lang",
+            "go",
+            "--format",
+            "json",
+            "--quiet",
+            "--no-insights",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"insights\"").not());
+}
