@@ -1,0 +1,78 @@
+[package]
+name = "untangle"
+version = "0.1.0"
+edition = "2021"
+description = "Module-level dependency graph analyzer for Python, Ruby, and Go"
+license = "MIT"
+
+[[bin]]
+name = "untangle"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Graph
+petgraph = "0.8"
+
+# Parsing
+tree-sitter = "0.24"
+tree-sitter-python = "0.23"
+tree-sitter-ruby = "0.23"
+tree-sitter-go = "0.23"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Git
+git2 = "0.20"
+
+# File matching
+globset = "0.4"
+
+# Error handling
+thiserror = "2"
+miette = { version = "7", features = ["fancy"] }
+
+# Parallelism
+rayon = "1"
+
+# File walking
+walkdir = "2"
+ignore = "0.4"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Tree-sitter streaming iterator
+streaming-iterator = "0.1"
+
+# Progress
+indicatif = "0.17"
+
+[dev-dependencies]
+insta = { version = "1", features = ["json", "redactions"] }
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
+pretty_assertions = "1"
+
+[[bench]]
+name = "parse_bench"
+harness = false
+
+[[bench]]
+name = "graph_bench"
+harness = false
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
