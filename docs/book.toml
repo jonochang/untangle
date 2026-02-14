@@ -6,5 +6,6 @@ title = "Untangle Documentation"
 description = "A fast, multi-language dependency graph analyzer that catches structural regressions in CI"
 
 [output.html]
-git-repository-url = "https://github.com/user/untangle"
-edit-url-template = "https://github.com/user/untangle/edit/master/docs/{path}"
+git-repository-url = "https://github.com/jonochang/untangle"
+edit-url-template = "https://github.com/jonochang/untangle/edit/master/docs/{path}"
+site-url = "/untangle/"
