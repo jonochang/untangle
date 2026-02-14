@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    name: Lint & Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: cargo fmt
+        run: nix develop --command cargo fmt --check
+      - name: cargo clippy
+        run: nix develop --command cargo clippy --all-targets -- -D warnings
+      - name: cargo deny
+        run: nix develop --command cargo deny check
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Run tests
+        run: nix develop --command cargo nextest run --profile ci
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: target/nextest/ci/results.xml
+
+  build:
+    name: Build Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: cargo build --release
+        run: nix develop --command cargo build --release
+
+  self-analyze:
+    name: Self-Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Analyze own source
+        run: nix develop --command cargo run -- analyze . --lang rust --format json --quiet > self-analysis.json
+      - name: Show config
+        run: nix develop --command cargo run -- config show
+      - name: Upload analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: self-analysis
+          path: self-analysis.json
