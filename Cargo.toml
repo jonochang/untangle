@@ -55,6 +55,9 @@ streaming-iterator = "0.1"
 # Progress
 indicatif = "0.17"
 
+# Config
+dirs = "5"
+
 [dev-dependencies]
 insta = { version = "1", features = ["json", "redactions"] }
 assert_cmd = "2"

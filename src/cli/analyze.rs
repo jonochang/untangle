@@ -1,3 +1,4 @@
+use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::errors::{Result, UntangleError};
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::metrics::scc::find_non_trivial_sccs;
@@ -25,8 +26,8 @@ pub struct AnalyzeArgs {
     pub lang: Option<Language>,
 
     /// Output format
-    #[arg(long, default_value = "json")]
-    pub format: OutputFormat,
+    #[arg(long)]
+    pub format: Option<OutputFormat>,
 
     /// Number of top hotspots to report
     #[arg(long)]
@@ -61,6 +62,24 @@ pub struct AnalyzeArgs {
     pub no_insights: bool,
 }
 
+impl AnalyzeArgs {
+    fn to_cli_overrides(&self) -> CliOverrides {
+        CliOverrides {
+            lang: self.lang,
+            format: self.format,
+            quiet: self.quiet,
+            top: self.top,
+            include_tests: self.include_tests,
+            no_insights: self.no_insights,
+            include: self.include.clone(),
+            exclude: self.exclude.clone(),
+            threshold_fanout: self.threshold_fanout,
+            threshold_scc: self.threshold_scc,
+            ..Default::default()
+        }
+    }
+}
+
 fn parse_language(s: &str) -> std::result::Result<Language, String> {
     s.parse()
 }
@@ -81,21 +100,26 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
             path: args.path.clone(),
         })?;
 
+    // Resolve config
+    let overrides = args.to_cli_overrides();
+    let config = resolve_config(&root, &overrides)?;
+
+    // Determine format from resolved config
+    let format: OutputFormat = config.format.parse().unwrap_or_default();
+
     // Detect or use specified language
-    let lang = match args.lang {
+    let lang = match config.lang {
         Some(l) => l,
         None => walk::detect_language(&root)
             .ok_or_else(|| UntangleError::NoFiles { path: root.clone() })?,
     };
 
+    // Merge ignore_patterns into exclude list
+    let mut exclude = config.exclude.clone();
+    exclude.extend(config.ignore_patterns.iter().cloned());
+
     // Discover files
-    let files = walk::discover_files(
-        &root,
-        lang,
-        &args.include,
-        &args.exclude,
-        args.include_tests,
-    )?;
+    let files = walk::discover_files(&root, lang, &config.include, &exclude, config.include_tests)?;
 
     if files.is_empty() {
         return Err(UntangleError::NoFiles { path: root });
@@ -119,7 +143,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     let project_files = files.clone();
 
     // Progress bar for parsing phase
-    let progress = if !args.quiet {
+    let progress = if !config.quiet {
         let pb = indicatif::ProgressBar::new(files.len() as u64);
         pb.set_style(
             indicatif::ProgressStyle::default_bar()
@@ -234,10 +258,16 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     let summary = Summary::from_graph(&graph);
     let sccs = find_non_trivial_sccs(&graph);
 
-    let insights = if args.no_insights {
+    let insights = if config.no_insights {
         None
     } else {
-        Some(crate::insights::generate_insights(&graph, &summary, &sccs))
+        Some(crate::insights::generate_insights_with_config(
+            &graph,
+            &summary,
+            &sccs,
+            &config.rules,
+            &config.overrides,
+        ))
     };
 
     let elapsed = start.elapsed();
@@ -273,7 +303,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
 
     let mut stdout = std::io::stdout();
 
-    match args.format {
+    match format {
         OutputFormat::Json => {
             crate::output::json::write_analyze_json(
                 &mut stdout,
@@ -281,7 +311,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 &summary,
                 &sccs,
                 metadata,
-                args.top,
+                config.top,
                 insights,
             )?;
         }
@@ -292,13 +322,13 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 &summary,
                 &sccs,
                 &metadata,
-                args.top,
+                config.top,
                 insights.as_deref(),
             )?;
         }
         OutputFormat::Dot => {
             crate::output::dot::write_dot(&mut stdout, &graph)?;
-            if !args.quiet {
+            if !config.quiet {
                 eprintln!(
                     "Completed in {:.2}s ({:.0} modules/sec)",
                     elapsed_ms as f64 / 1000.0,
@@ -317,7 +347,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         }
     }
 
-    if !args.quiet && args.format != OutputFormat::Dot {
+    if !config.quiet && format != OutputFormat::Dot {
         eprintln!(
             "Analyzed {} modules ({} edges) in {:.2}s ({:.0} modules/sec)",
             node_count,

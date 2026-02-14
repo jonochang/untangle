@@ -1,3 +1,4 @@
+use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::errors::{Result, UntangleError};
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::graph::diff::{
@@ -37,8 +38,8 @@ pub struct DiffArgs {
     pub lang: Option<Language>,
 
     /// Output format
-    #[arg(long, default_value = "json")]
-    pub format: OutputFormat,
+    #[arg(long)]
+    pub format: Option<OutputFormat>,
 
     /// Fail-on conditions (comma-separated)
     #[arg(long, value_delimiter = ',')]
@@ -51,6 +52,19 @@ pub struct DiffArgs {
     /// Suppress progress output
     #[arg(long)]
     pub quiet: bool,
+}
+
+impl DiffArgs {
+    fn to_cli_overrides(&self) -> CliOverrides {
+        CliOverrides {
+            lang: self.lang,
+            format: self.format,
+            quiet: self.quiet,
+            include_tests: self.include_tests,
+            fail_on: self.fail_on.clone(),
+            ..Default::default()
+        }
+    }
 }
 
 fn parse_language(s: &str) -> std::result::Result<Language, String> {
@@ -95,9 +109,13 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         .canonicalize()
         .map_err(|_| UntangleError::NoFiles { path: path.clone() })?;
 
+    // Resolve config
+    let overrides = args.to_cli_overrides();
+    let config = resolve_config(&root, &overrides)?;
+
     let repo = crate::git::open_repo(&root)?;
 
-    let lang = match args.lang {
+    let lang = match config.lang {
         Some(l) => l,
         None => crate::walk::detect_language(&root)
             .ok_or_else(|| UntangleError::NoFiles { path: root.clone() })?,
@@ -111,8 +129,8 @@ pub fn run(args: &DiffArgs) -> Result<()> {
     // Compute diff
     let diff = compute_graph_diff(&base_graph, &head_graph, &args.base, &args.head);
 
-    // Parse fail-on conditions
-    let conditions: Vec<FailCondition> = args
+    // Parse fail-on conditions from resolved config
+    let conditions: Vec<FailCondition> = config
         .fail_on
         .iter()
         .filter_map(|s| FailCondition::parse(s))
@@ -144,8 +162,10 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         scc_changes: diff.scc_changes,
     };
 
+    let format: OutputFormat = config.format.parse().unwrap_or_default();
+
     let mut stdout = std::io::stdout();
-    match args.format {
+    match format {
         OutputFormat::Json => {
             crate::output::json::write_diff_json(&mut stdout, &result)?;
         }

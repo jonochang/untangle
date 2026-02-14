@@ -15,3 +15,17 @@ pub enum OutputFormat {
     Dot,
     Sarif,
 }
+
+impl std::str::FromStr for OutputFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "json" => Ok(OutputFormat::Json),
+            "text" => Ok(OutputFormat::Text),
+            "dot" => Ok(OutputFormat::Dot),
+            "sarif" => Ok(OutputFormat::Sarif),
+            _ => Err(format!("unknown output format: {s}")),
+        }
+    }
+}

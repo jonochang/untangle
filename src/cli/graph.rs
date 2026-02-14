@@ -1,3 +1,4 @@
+use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::errors::{Result, UntangleError};
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::output::OutputFormat;
@@ -19,8 +20,8 @@ pub struct GraphArgs {
     pub lang: Option<Language>,
 
     /// Output format (json or dot)
-    #[arg(long, default_value = "dot")]
-    pub format: OutputFormat,
+    #[arg(long)]
+    pub format: Option<OutputFormat>,
 
     /// Include test files
     #[arg(long)]
@@ -39,6 +40,20 @@ pub struct GraphArgs {
     pub quiet: bool,
 }
 
+impl GraphArgs {
+    fn to_cli_overrides(&self) -> CliOverrides {
+        CliOverrides {
+            lang: self.lang,
+            format: self.format,
+            quiet: self.quiet,
+            include_tests: self.include_tests,
+            include: self.include.clone(),
+            exclude: self.exclude.clone(),
+            ..Default::default()
+        }
+    }
+}
+
 fn parse_language(s: &str) -> std::result::Result<Language, String> {
     s.parse()
 }
@@ -51,19 +66,23 @@ pub fn run(args: &GraphArgs) -> Result<()> {
             path: args.path.clone(),
         })?;
 
-    let lang = match args.lang {
+    // Resolve config
+    let overrides = args.to_cli_overrides();
+    let config = resolve_config(&root, &overrides)?;
+
+    let format: OutputFormat = config.format.parse().unwrap_or(OutputFormat::Dot);
+
+    let lang = match config.lang {
         Some(l) => l,
         None => walk::detect_language(&root)
             .ok_or_else(|| UntangleError::NoFiles { path: root.clone() })?,
     };
 
-    let files = walk::discover_files(
-        &root,
-        lang,
-        &args.include,
-        &args.exclude,
-        args.include_tests,
-    )?;
+    // Merge ignore_patterns into exclude list
+    let mut exclude = config.exclude.clone();
+    exclude.extend(config.ignore_patterns.iter().cloned());
+
+    let files = walk::discover_files(&root, lang, &config.include, &exclude, config.include_tests)?;
 
     if files.is_empty() {
         return Err(UntangleError::NoFiles { path: root });
@@ -128,7 +147,7 @@ pub fn run(args: &GraphArgs) -> Result<()> {
     let graph = builder.build();
     let mut stdout = std::io::stdout();
 
-    match args.format {
+    match format {
         OutputFormat::Dot => {
             crate::output::dot::write_dot(&mut stdout, &graph)?;
         }

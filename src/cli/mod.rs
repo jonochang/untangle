@@ -1,4 +1,5 @@
 pub mod analyze;
+pub mod config;
 pub mod diff;
 pub mod graph;
 
@@ -24,6 +25,8 @@ pub enum Commands {
     Diff(diff::DiffArgs),
     /// Export raw dependency graph
     Graph(graph::GraphArgs),
+    /// Show or explain configuration
+    Config(config::ConfigArgs),
 }
 
 /// Dispatch to the appropriate command handler.
@@ -32,5 +35,6 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Commands::Analyze(args) => analyze::run(&args),
         Commands::Diff(args) => diff::run(&args),
         Commands::Graph(args) => graph::run(&args),
+        Commands::Config(args) => config::run(&args),
     }
 }

@@ -1,3 +1,4 @@
+use crate::config::{OverrideEntry, ResolvedRules};
 use crate::graph::ir::DepGraph;
 use crate::metrics::entropy::shannon_entropy;
 use crate::metrics::fanout::{fan_in, fan_out};
@@ -208,6 +209,231 @@ pub fn generate_insights(graph: &DepGraph, summary: &Summary, sccs: &[SccInfo]) 
                     depth: None,
                 },
             });
+        }
+    }
+
+    // Sort: Warnings first, then by category priority, then alphabetically by module
+    insights.sort_by(|a, b| {
+        let sev_a = matches!(a.severity, InsightSeverity::Warning);
+        let sev_b = matches!(b.severity, InsightSeverity::Warning);
+        sev_b
+            .cmp(&sev_a)
+            .then(a.category.cmp(&b.category))
+            .then(a.module.cmp(&b.module))
+    });
+
+    insights
+}
+
+/// Generate insights using resolved configuration rules and per-path overrides.
+pub fn generate_insights_with_config(
+    graph: &DepGraph,
+    summary: &Summary,
+    sccs: &[SccInfo],
+    rules: &ResolvedRules,
+    overrides: &[(globset::GlobMatcher, OverrideEntry)],
+) -> Vec<Insight> {
+    let mut insights = Vec::new();
+    let mut god_modules: HashSet<String> = HashSet::new();
+
+    // Collect per-node metrics
+    let node_metrics: Vec<_> = graph
+        .node_indices()
+        .map(|idx| {
+            let name = graph[idx].name.clone();
+            let fo = fan_out(graph, idx);
+            let fi = fan_in(graph, idx);
+            let edge_weights: Vec<usize> = graph
+                .edges_directed(idx, Direction::Outgoing)
+                .map(|e| e.weight().weight)
+                .collect();
+            let entropy = shannon_entropy(&edge_weights);
+            (name, fo, fi, entropy)
+        })
+        .collect();
+
+    // God Module
+    if rules.god_module.enabled {
+        for (name, fo, fi, _entropy) in &node_metrics {
+            let (effective_rules, enabled) =
+                crate::config::overrides::apply_overrides(name, rules, overrides);
+            if !enabled || !effective_rules.god_module.enabled {
+                continue;
+            }
+            let r = &effective_rules.god_module;
+            let fo_check = if r.relative_to_p90 {
+                *fo > summary.p90_fanout && *fo >= r.min_fanout
+            } else {
+                *fo >= r.min_fanout
+            };
+            let fi_check = if r.relative_to_p90 {
+                *fi > summary.p90_fanin && *fi >= r.min_fanin
+            } else {
+                *fi >= r.min_fanin
+            };
+            if fo_check && fi_check {
+                god_modules.insert(name.clone());
+                insights.push(Insight {
+                    category: InsightCategory::GodModule,
+                    severity: InsightSeverity::Warning,
+                    module: name.clone(),
+                    message: format!(
+                        "Module '{}' has both high fan-out ({}) and high fan-in ({}), \
+                         suggesting it may be acting as a central hub. \
+                         Consider decomposing it to reduce coupling.",
+                        name, fo, fi
+                    ),
+                    metrics: InsightMetrics {
+                        fanout: Some(*fo),
+                        fanin: Some(*fi),
+                        entropy: None,
+                        scc_id: None,
+                        scc_size: None,
+                        depth: None,
+                    },
+                });
+            }
+        }
+    }
+
+    // High Fan-out
+    if rules.high_fanout.enabled {
+        for (name, fo, _fi, _entropy) in &node_metrics {
+            if god_modules.contains(name) {
+                continue;
+            }
+            let (effective_rules, enabled) =
+                crate::config::overrides::apply_overrides(name, rules, overrides);
+            if !enabled || !effective_rules.high_fanout.enabled {
+                continue;
+            }
+            let r = &effective_rules.high_fanout;
+            let triggers = if r.relative_to_p90 {
+                *fo > summary.p90_fanout && *fo >= r.min_fanout
+            } else {
+                *fo >= r.min_fanout
+            };
+            if triggers {
+                let severity = if *fo >= r.warning_multiplier * summary.p90_fanout {
+                    InsightSeverity::Warning
+                } else {
+                    InsightSeverity::Info
+                };
+                insights.push(Insight {
+                    category: InsightCategory::HighFanout,
+                    severity,
+                    module: name.clone(),
+                    message: format!(
+                        "Module '{}' has a fan-out of {} (p90={}). \
+                         Consider whether it has too many responsibilities \
+                         and might benefit from being split.",
+                        name, fo, summary.p90_fanout
+                    ),
+                    metrics: InsightMetrics {
+                        fanout: Some(*fo),
+                        fanin: None,
+                        entropy: None,
+                        scc_id: None,
+                        scc_size: None,
+                        depth: None,
+                    },
+                });
+            }
+        }
+    }
+
+    // Circular Dependency
+    if rules.circular_dependency.enabled {
+        for scc in sccs {
+            let severity = if scc.size >= rules.circular_dependency.warning_min_size {
+                InsightSeverity::Warning
+            } else {
+                InsightSeverity::Info
+            };
+            let members_str = scc.members.join(", ");
+            insights.push(Insight {
+                category: InsightCategory::CircularDependency,
+                severity,
+                module: "(graph-level)".to_string(),
+                message: format!(
+                    "Modules {} form a circular dependency (SCC #{}, {} modules). \
+                     Consider introducing an interface to break this cycle.",
+                    members_str, scc.id, scc.size
+                ),
+                metrics: InsightMetrics {
+                    fanout: None,
+                    fanin: None,
+                    entropy: None,
+                    scc_id: Some(scc.id),
+                    scc_size: Some(scc.size),
+                    depth: None,
+                },
+            });
+        }
+    }
+
+    // Deep Chain
+    if rules.deep_chain.enabled {
+        let dc = &rules.deep_chain;
+        if summary.max_depth >= dc.absolute_depth
+            || (summary.max_depth as f64 > dc.relative_multiplier * summary.avg_depth
+                && summary.max_depth >= dc.relative_min_depth)
+        {
+            insights.push(Insight {
+                category: InsightCategory::DeepChain,
+                severity: InsightSeverity::Info,
+                module: "(graph-level)".to_string(),
+                message: format!(
+                    "The longest dependency chain is {} levels deep (avg: {:.1}). \
+                     Deep chains may increase build times. \
+                     Consider consolidating intermediate modules.",
+                    summary.max_depth, summary.avg_depth
+                ),
+                metrics: InsightMetrics {
+                    fanout: None,
+                    fanin: None,
+                    entropy: None,
+                    scc_id: None,
+                    scc_size: None,
+                    depth: Some(summary.max_depth),
+                },
+            });
+        }
+    }
+
+    // High Entropy
+    if rules.high_entropy.enabled {
+        for (name, fo, _fi, entropy) in &node_metrics {
+            if god_modules.contains(name) {
+                continue;
+            }
+            let (effective_rules, enabled) =
+                crate::config::overrides::apply_overrides(name, rules, overrides);
+            if !enabled || !effective_rules.high_entropy.enabled {
+                continue;
+            }
+            let r = &effective_rules.high_entropy;
+            if *entropy > r.min_entropy && *fo >= r.min_fanout {
+                insights.push(Insight {
+                    category: InsightCategory::HighEntropy,
+                    severity: InsightSeverity::Info,
+                    module: name.clone(),
+                    message: format!(
+                        "Module '{}' has high dependency entropy ({:.2}), \
+                         meaning its {} dependencies are spread broadly. \
+                         Consider consolidating behind a facade.",
+                        name, entropy, fo
+                    ),
+                    metrics: InsightMetrics {
+                        fanout: Some(*fo),
+                        fanin: None,
+                        entropy: Some((*entropy * 100.0).round() / 100.0),
+                        scc_id: None,
+                        scc_size: None,
+                        depth: None,
+                    },
+                });
+            }
         }
     }
 
