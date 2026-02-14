@@ -25,10 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: Set up test fixtures
+        run: tests/fixtures/go/diff_repo/setup_git.sh
       - name: Run tests
         run: nix develop --command cargo nextest run --profile ci
       - name: Upload test results

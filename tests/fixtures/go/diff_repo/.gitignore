@@ -1,0 +1,2 @@
+# The .git directory is created by setup_git.sh, not tracked
+.git/
