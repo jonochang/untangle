@@ -2,6 +2,7 @@ pub mod analyze;
 pub mod config;
 pub mod diff;
 pub mod graph;
+pub mod service_graph;
 
 use crate::errors::Result;
 use clap::{Parser, Subcommand};
@@ -27,6 +28,8 @@ pub enum Commands {
     Graph(graph::GraphArgs),
     /// Show or explain configuration
     Config(config::ConfigArgs),
+    /// Analyze cross-service dependencies
+    ServiceGraph(service_graph::ServiceGraphArgs),
 }
 
 /// Dispatch to the appropriate command handler.
@@ -36,5 +39,6 @@ pub fn dispatch(cli: Cli) -> Result<()> {
         Commands::Diff(args) => diff::run(&args),
         Commands::Graph(args) => graph::run(&args),
         Commands::Config(args) => config::run(&args),
+        Commands::ServiceGraph(args) => service_graph::run(&args),
     }
 }

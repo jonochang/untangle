@@ -9,9 +9,9 @@ use crate::metrics::scc::find_non_trivial_sccs;
 use crate::metrics::summary::Summary;
 use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, SourceLocation};
-use crate::parse::{
-    go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, rust::RustFrontend, ParseFrontend,
-};
+use crate::parse::go::GoFrontend;
+use crate::parse::rust::RustFrontend;
+use crate::parse::ParseFrontend;
 use crate::walk::Language;
 use clap::Args;
 use petgraph::visit::EdgeRef;
@@ -125,10 +125,16 @@ pub fn run(args: &DiffArgs) -> Result<()> {
 
     let repo = crate::git::open_repo(&root)?;
 
-    let lang = match config.lang {
-        Some(l) => l,
-        None => crate::walk::detect_language(&root)
-            .ok_or_else(|| UntangleError::NoFiles { path: root.clone() })?,
+    // Determine languages
+    let langs: Vec<Language> = match config.lang {
+        Some(l) => vec![l],
+        None => {
+            let detected = crate::walk::detect_languages(&root);
+            if detected.is_empty() {
+                return Err(UntangleError::NoFiles { path: root.clone() });
+            }
+            detected
+        }
     };
 
     // Merge ignore_patterns into exclude list
@@ -140,7 +146,7 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         &repo,
         &args.base,
         &root,
-        lang,
+        &langs,
         &config.include,
         &exclude,
         config.include_tests,
@@ -152,7 +158,7 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         &repo,
         &args.head,
         &root,
-        lang,
+        &langs,
         &config.include,
         &exclude,
         config.include_tests,
@@ -230,15 +236,19 @@ fn build_graph_at_ref(
     repo: &git2::Repository,
     reference: &str,
     root: &Path,
-    lang: Language,
+    langs: &[Language],
     include: &[String],
     exclude: &[String],
     include_tests: bool,
     go_exclude_stdlib: bool,
     ruby_load_paths: &[PathBuf],
 ) -> Result<DepGraph> {
-    let extensions = lang.extensions();
-    let all_files = crate::git::list_files_at_ref(repo, reference, extensions)?;
+    // Collect all extensions from all languages
+    let extensions: Vec<&str> = langs
+        .iter()
+        .flat_map(|l| l.extensions().iter().copied())
+        .collect();
+    let all_files = crate::git::list_files_at_ref(repo, reference, &extensions)?;
 
     // Apply include/exclude/test filters
     let exclude_set = if !exclude.is_empty() {
@@ -263,100 +273,118 @@ fn build_graph_at_ref(
     } else {
         None
     };
-    let files: Vec<PathBuf> = all_files
-        .into_iter()
-        .filter(|f| {
-            let path_str = f.to_string_lossy();
-            // Exclude test files unless include_tests is set
-            if !include_tests && lang == Language::Go && path_str.ends_with("_test.go") {
-                return false;
-            }
-            // Apply exclude patterns
-            if let Some(ref set) = exclude_set {
-                if set.is_match(f) {
-                    return false;
-                }
-            }
-            // Apply include patterns (if specified, only include matching files)
-            if let Some(ref set) = include_set {
-                if !set.is_match(f) {
-                    return false;
-                }
-            }
-            true
-        })
-        .collect();
 
-    let frontend: Box<dyn ParseFrontend> = match lang {
-        Language::Go => {
-            // Try to read go.mod at this ref
-            let go_mod = crate::git::read_file_at_ref(repo, reference, Path::new("go.mod")).ok();
-            let module_path = go_mod.and_then(|content| {
-                String::from_utf8(content).ok().and_then(|s| {
-                    s.lines()
-                        .find(|l| l.trim().starts_with("module "))
-                        .map(|l| l.trim().strip_prefix("module ").unwrap().trim().to_string())
+    // Partition files by language
+    let mut files_by_lang: HashMap<Language, Vec<PathBuf>> = HashMap::new();
+    for f in all_files {
+        let lang = match crate::walk::language_for_file(&f) {
+            Some(l) if langs.contains(&l) => l,
+            _ => continue,
+        };
+
+        let path_str = f.to_string_lossy();
+        // Exclude test files unless include_tests is set
+        if !include_tests && lang == Language::Go && path_str.ends_with("_test.go") {
+            continue;
+        }
+        // Apply exclude patterns
+        if let Some(ref set) = exclude_set {
+            if set.is_match(&f) {
+                continue;
+            }
+        }
+        // Apply include patterns
+        if let Some(ref set) = include_set {
+            if !set.is_match(&f) {
+                continue;
+            }
+        }
+
+        files_by_lang.entry(lang).or_default().push(f);
+    }
+
+    // Create frontends per language
+    let mut frontends: HashMap<Language, Box<dyn ParseFrontend>> = HashMap::new();
+    for &lang in langs {
+        let frontend: Box<dyn ParseFrontend> = match lang {
+            Language::Go => {
+                let go_mod =
+                    crate::git::read_file_at_ref(repo, reference, Path::new("go.mod")).ok();
+                let module_path = go_mod.and_then(|content| {
+                    String::from_utf8(content).ok().and_then(|s| {
+                        s.lines()
+                            .find(|l| l.trim().starts_with("module "))
+                            .map(|l| l.trim().strip_prefix("module ").unwrap().trim().to_string())
+                    })
+                });
+                let fe = match module_path {
+                    Some(mp) => GoFrontend::with_module_path(mp),
+                    None => GoFrontend::new(),
+                };
+                Box::new(fe.with_exclude_stdlib(go_exclude_stdlib))
+            }
+            Language::Python => Box::new(crate::parse::python::PythonFrontend::new()),
+            Language::Ruby => Box::new(crate::parse::ruby::RubyFrontend::with_load_paths(
+                ruby_load_paths.to_vec(),
+            )),
+            Language::Rust => {
+                let cargo_toml =
+                    crate::git::read_file_at_ref(repo, reference, Path::new("Cargo.toml")).ok();
+                let crate_name = cargo_toml.and_then(|content| {
+                    String::from_utf8(content)
+                        .ok()
+                        .and_then(|s| RustFrontend::parse_crate_name(&s))
+                });
+                Box::new(match crate_name {
+                    Some(name) => RustFrontend::with_crate_name(name),
+                    None => RustFrontend::new(),
                 })
-            });
-            let fe = match module_path {
-                Some(mp) => GoFrontend::with_module_path(mp),
-                None => GoFrontend::new(),
-            };
-            Box::new(fe.with_exclude_stdlib(go_exclude_stdlib))
-        }
-        Language::Python => Box::new(PythonFrontend::new()),
-        Language::Ruby => Box::new(RubyFrontend::with_load_paths(ruby_load_paths.to_vec())),
-        Language::Rust => {
-            // Try to read Cargo.toml at this ref
-            let cargo_toml =
-                crate::git::read_file_at_ref(repo, reference, Path::new("Cargo.toml")).ok();
-            let crate_name = cargo_toml.and_then(|content| {
-                String::from_utf8(content)
-                    .ok()
-                    .and_then(|s| RustFrontend::parse_crate_name(&s))
-            });
-            Box::new(match crate_name {
-                Some(name) => RustFrontend::with_crate_name(name),
-                None => RustFrontend::new(),
-            })
-        }
-    };
+            }
+        };
+        frontends.insert(lang, frontend);
+    }
 
     let mut builder = GraphBuilder::new();
 
-    for file_path in &files {
-        let source = match crate::git::read_file_at_ref(repo, reference, file_path) {
-            Ok(s) => s,
-            Err(_) => continue,
+    for (&lang, files) in &files_by_lang {
+        let frontend = match frontends.get(&lang) {
+            Some(f) => f,
+            None => continue,
         };
 
-        let imports = frontend.extract_imports(&source, file_path);
-        let file_paths: Vec<PathBuf> = files.clone();
+        for file_path in files {
+            let source = match crate::git::read_file_at_ref(repo, reference, file_path) {
+                Ok(s) => s,
+                Err(_) => continue,
+            };
 
-        for raw in &imports {
-            if raw.confidence == ImportConfidence::External
-                || raw.confidence == ImportConfidence::Dynamic
-                || raw.confidence == ImportConfidence::Unresolvable
-            {
-                continue;
-            }
+            let imports = frontend.extract_imports(&source, file_path);
 
-            if let Some(target) = frontend.resolve(raw, root, &file_paths) {
-                // For Go, use the parent directory as source module (package-level)
-                let source_module = if lang == Language::Go {
-                    file_path.parent().unwrap_or(file_path).to_path_buf()
-                } else {
-                    file_path.clone()
-                };
-                builder.add_import(&ResolvedImport {
-                    source_module,
-                    target_module: target,
-                    location: SourceLocation {
-                        file: file_path.clone(),
-                        line: raw.line,
-                        column: raw.column,
-                    },
-                });
+            for raw in &imports {
+                if raw.confidence == ImportConfidence::External
+                    || raw.confidence == ImportConfidence::Dynamic
+                    || raw.confidence == ImportConfidence::Unresolvable
+                {
+                    continue;
+                }
+
+                if let Some(target) = frontend.resolve(raw, root, files) {
+                    let source_module = if lang == Language::Go {
+                        file_path.parent().unwrap_or(file_path).to_path_buf()
+                    } else {
+                        file_path.clone()
+                    };
+                    builder.add_import(&ResolvedImport {
+                        source_module,
+                        target_module: target,
+                        location: SourceLocation {
+                            file: file_path.clone(),
+                            line: raw.line,
+                            column: raw.column,
+                        },
+                        language: Some(lang),
+                    });
+                }
             }
         }
     }

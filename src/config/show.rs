@@ -135,6 +135,7 @@ mod tests {
             python: ResolvedPythonConfig::default(),
             ruby: ResolvedRubyConfig::default(),
             overrides: Vec::new(),
+            services: Vec::new(),
             provenance: prov,
             loaded_files: vec![PathBuf::from("/project/.untangle.toml")],
         }

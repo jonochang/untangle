@@ -3,7 +3,7 @@ use crate::config::schema::FileConfig;
 use crate::config::{
     CircularDependencyRule, DeepChainRule, GodModuleRule, HighEntropyRule, HighFanoutRule,
     OverrideEntry, ResolvedConfig, ResolvedGoConfig, ResolvedPythonConfig, ResolvedRubyConfig,
-    ResolvedRules,
+    ResolvedRules, ResolvedService,
 };
 use crate::errors::{Result, UntangleError};
 use crate::output::OutputFormat;
@@ -54,6 +54,7 @@ pub fn resolve_config(working_dir: &Path, cli: &CliOverrides) -> Result<Resolved
         python: ResolvedPythonConfig::default(),
         ruby: ResolvedRubyConfig::default(),
         overrides: Vec::new(),
+        services: Vec::new(),
         provenance: ProvenanceMap::new(),
         loaded_files: Vec::new(),
     };
@@ -285,6 +286,19 @@ fn apply_file_config(
                 },
             ));
         }
+    }
+
+    // Services
+    for (name, svc) in &file.services {
+        let lang = svc.lang.as_ref().and_then(|l| l.parse::<Language>().ok());
+        config.services.push(ResolvedService {
+            name: name.clone(),
+            root: PathBuf::from(&svc.root),
+            lang,
+            graphql_schemas: svc.graphql_schemas.iter().map(PathBuf::from).collect(),
+            openapi_specs: svc.openapi_specs.iter().map(PathBuf::from).collect(),
+            base_urls: svc.base_urls.clone(),
+        });
     }
 }
 
@@ -717,5 +731,50 @@ conditions = ["fanout-increase"]
         assert_eq!(config.rules.circular_dependency.warning_min_size, 3);
         assert_eq!(config.fail_on, vec!["fanout-increase"]);
         assert_eq!(config.exclude, vec!["vendor/**"]);
+    }
+
+    #[test]
+    fn services_resolved_from_config() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join(".untangle.toml");
+        std::fs::write(
+            &config_path,
+            r#"
+[services.user-api]
+root = "services/user-api"
+lang = "go"
+graphql_schemas = ["services/user-api/schema.graphql"]
+
+[services.web-frontend]
+root = "services/web-frontend"
+lang = "python"
+"#,
+        )
+        .unwrap();
+
+        let cli = CliOverrides::default();
+        let config = resolve_config(tmp.path(), &cli).unwrap();
+
+        assert_eq!(config.services.len(), 2);
+
+        let user_api = config
+            .services
+            .iter()
+            .find(|s| s.name == "user-api")
+            .unwrap();
+        assert_eq!(user_api.root, PathBuf::from("services/user-api"));
+        assert_eq!(user_api.lang, Some(Language::Go));
+        assert_eq!(
+            user_api.graphql_schemas,
+            vec![PathBuf::from("services/user-api/schema.graphql")]
+        );
+
+        let web = config
+            .services
+            .iter()
+            .find(|s| s.name == "web-frontend")
+            .unwrap();
+        assert_eq!(web.root, PathBuf::from("services/web-frontend"));
+        assert_eq!(web.lang, Some(Language::Python));
     }
 }

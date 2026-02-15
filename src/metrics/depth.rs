@@ -93,7 +93,7 @@ fn reverse_topo_order<N, E>(dag: &petgraph::Graph<N, E>) -> Vec<petgraph::graph:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::ir::{GraphEdge, GraphNode, NodeKind};
+    use crate::graph::ir::{EdgeKind, GraphEdge, GraphNode, NodeKind};
     use std::path::PathBuf;
 
     fn make_node(name: &str) -> GraphNode {
@@ -102,11 +102,13 @@ mod tests {
             path: PathBuf::from(name),
             name: name.to_string(),
             span: None,
+            language: None,
         }
     }
 
     fn make_edge() -> GraphEdge {
         GraphEdge {
+            kind: EdgeKind::default(),
             source_locations: vec![],
             weight: 1,
         }

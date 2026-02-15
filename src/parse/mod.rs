@@ -1,7 +1,12 @@
 pub mod common;
+pub mod factory;
 pub mod go;
+pub mod graphql;
+pub mod graphql_client;
+pub mod openapi;
 pub mod python;
 pub mod resolver;
+pub mod rest_client;
 pub mod ruby;
 pub mod rust;
 

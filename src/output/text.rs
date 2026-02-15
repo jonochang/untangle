@@ -20,7 +20,18 @@ pub fn write_analyze_text<W: Write>(
     writeln!(writer, "Untangle Analysis Report")?;
     writeln!(writer, "========================")?;
     writeln!(writer)?;
-    writeln!(writer, "Language:   {}", metadata.language)?;
+    if let Some(ref lang_stats) = metadata.languages {
+        writeln!(writer, "Languages:")?;
+        for ls in lang_stats {
+            writeln!(
+                writer,
+                "  - {} ({} files, {} nodes)",
+                ls.language, ls.files_parsed, ls.nodes
+            )?;
+        }
+    } else {
+        writeln!(writer, "Language:   {}", metadata.language)?;
+    }
     writeln!(writer, "Root:       {}", metadata.root.display())?;
     writeln!(writer, "Nodes:      {}", metadata.node_count)?;
     writeln!(writer, "Edges:      {}", metadata.edge_count)?;

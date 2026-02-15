@@ -3,15 +3,17 @@ use crate::errors::{Result, UntangleError};
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::metrics::scc::find_non_trivial_sccs;
 use crate::metrics::summary::Summary;
-use crate::output::json::Metadata;
+use crate::output::json::{LanguageStats, Metadata};
 use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, RawImport, SourceLocation};
-use crate::parse::{
-    go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, rust::RustFrontend, ParseFrontend,
-};
+use crate::parse::factory;
+use crate::parse::go::GoFrontend;
+use crate::parse::rust::RustFrontend;
+use crate::parse::ParseFrontend;
 use crate::walk::{self, Language};
 use clap::Args;
 use rayon::prelude::*;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
@@ -88,6 +90,7 @@ fn parse_language(s: &str) -> std::result::Result<Language, String> {
 struct FileParseResult {
     source_module: PathBuf,
     imports: Vec<RawImport>,
+    language: Language,
 }
 
 pub fn run(args: &AnalyzeArgs) -> Result<()> {
@@ -107,44 +110,80 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     // Determine format from resolved config
     let format: OutputFormat = config.format.parse().unwrap_or_default();
 
-    // Detect or use specified language
-    let lang = match config.lang {
-        Some(l) => l,
-        None => walk::detect_language(&root)
-            .ok_or_else(|| UntangleError::NoFiles { path: root.clone() })?,
-    };
-
     // Merge ignore_patterns into exclude list
     let mut exclude = config.exclude.clone();
     exclude.extend(config.ignore_patterns.iter().cloned());
 
-    // Discover files
-    let files = walk::discover_files(&root, lang, &config.include, &exclude, config.include_tests)?;
+    // Determine languages and discover files
+    let (langs, files_by_lang): (Vec<Language>, HashMap<Language, Vec<PathBuf>>) = match config.lang
+    {
+        Some(l) => {
+            // Single-language mode
+            let files =
+                walk::discover_files(&root, l, &config.include, &exclude, config.include_tests)?;
+            let mut map = HashMap::new();
+            if !files.is_empty() {
+                map.insert(l, files);
+            }
+            (vec![l], map)
+        }
+        None => {
+            // Multi-language mode: detect all languages
+            let map =
+                walk::discover_files_multi(&root, &config.include, &exclude, config.include_tests)?;
+            let mut langs: Vec<Language> = map.keys().copied().collect();
+            // Sort by file count descending for deterministic output
+            langs.sort_by(|a, b| {
+                map.get(b)
+                    .map(|v| v.len())
+                    .unwrap_or(0)
+                    .cmp(&map.get(a).map(|v| v.len()).unwrap_or(0))
+            });
+            (langs, map)
+        }
+    };
 
-    if files.is_empty() {
+    // Flatten all files for processing
+    let all_files: Vec<(Language, PathBuf)> = langs
+        .iter()
+        .flat_map(|&lang| {
+            files_by_lang
+                .get(&lang)
+                .map(|files| files.iter().map(move |f| (lang, f.clone())))
+                .into_iter()
+                .flatten()
+        })
+        .collect();
+
+    if all_files.is_empty() {
         return Err(UntangleError::NoFiles { path: root });
     }
 
     // Read go.mod for Go projects (needed by all parser instances)
-    let go_module_path = if lang == Language::Go {
+    let go_module_path = if langs.contains(&Language::Go) {
         GoFrontend::read_go_mod(&root)
     } else {
         None
     };
 
     // Read Cargo.toml for Rust projects
-    let rust_crate_name = if lang == Language::Rust {
+    let rust_crate_name = if langs.contains(&Language::Rust) {
         RustFrontend::read_cargo_toml(&root)
     } else {
         None
     };
 
     let files_skipped = AtomicUsize::new(0);
-    let project_files = files.clone();
+
+    // Track per-language file counts
+    let per_lang_files_parsed: HashMap<Language, usize> = files_by_lang
+        .iter()
+        .map(|(&lang, files)| (lang, files.len()))
+        .collect();
 
     // Progress bar for parsing phase
     let progress = if !config.quiet {
-        let pb = indicatif::ProgressBar::new(files.len() as u64);
+        let pb = indicatif::ProgressBar::new(all_files.len() as u64);
         pb.set_style(
             indicatif::ProgressStyle::default_bar()
                 .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} files ({eta})")
@@ -157,9 +196,9 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     };
 
     // Parallel parse: each thread creates its own Parser (Parser is not Send)
-    let parse_results: Vec<FileParseResult> = files
+    let parse_results: Vec<FileParseResult> = all_files
         .par_iter()
-        .filter_map(|file_path| {
+        .filter_map(|(lang, file_path)| {
             let source = match std::fs::read(file_path) {
                 Ok(s) => s,
                 Err(e) => {
@@ -170,33 +209,11 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
             };
 
             // Each thread creates its own frontend (which creates its own Parser)
-            let frontend: Box<dyn ParseFrontend> = match lang {
-                Language::Go => {
-                    let fe = match &go_module_path {
-                        Some(mp) => GoFrontend::with_module_path(mp.clone()),
-                        None => GoFrontend::new(),
-                    };
-                    Box::new(fe.with_exclude_stdlib(config.go.exclude_stdlib))
-                }
-                Language::Python => Box::new(PythonFrontend::new()),
-                Language::Ruby => Box::new(RubyFrontend::with_load_paths(config.ruby_load_paths())),
-                Language::Rust => Box::new(match &rust_crate_name {
-                    Some(name) => RustFrontend::with_crate_name(name.clone()),
-                    None => RustFrontend::new(),
-                }),
-            };
+            let frontend: Box<dyn ParseFrontend> =
+                factory::create_frontend(*lang, &config, &go_module_path, &rust_crate_name);
 
             let imports = frontend.extract_imports(&source, file_path);
-            let relative_path = file_path.strip_prefix(&root).unwrap_or(file_path);
-            // For Go, use the parent directory as the source module (package-level granularity)
-            let source_module = if lang == Language::Go {
-                relative_path
-                    .parent()
-                    .unwrap_or(relative_path)
-                    .to_path_buf()
-            } else {
-                relative_path.to_path_buf()
-            };
+            let source_module = factory::source_module_path(file_path, &root, *lang);
 
             if let Some(ref pb) = progress {
                 pb.inc(1);
@@ -205,6 +222,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
             Some(FileParseResult {
                 source_module,
                 imports,
+                language: *lang,
             })
         })
         .collect();
@@ -220,24 +238,32 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     let mut builder = GraphBuilder::new();
     let mut unresolved_imports = 0usize;
 
-    // Create a single frontend for resolution
-    let resolver: Box<dyn ParseFrontend> = match lang {
-        Language::Go => {
-            let fe = match &go_module_path {
-                Some(mp) => GoFrontend::with_module_path(mp.clone()),
-                None => GoFrontend::new(),
-            };
-            Box::new(fe.with_exclude_stdlib(config.go.exclude_stdlib))
-        }
-        Language::Python => Box::new(PythonFrontend::new()),
-        Language::Ruby => Box::new(RubyFrontend::with_load_paths(config.ruby_load_paths())),
-        Language::Rust => Box::new(match &rust_crate_name {
-            Some(name) => RustFrontend::with_crate_name(name.clone()),
-            None => RustFrontend::new(),
-        }),
-    };
+    // Create resolvers per language
+    let resolvers: HashMap<Language, Box<dyn ParseFrontend>> = langs
+        .iter()
+        .map(|&lang| {
+            let frontend =
+                factory::create_frontend(lang, &config, &go_module_path, &rust_crate_name);
+            (lang, frontend)
+        })
+        .collect();
+
+    // Build per-language file lists for resolution
+    let files_by_lang_for_resolve: HashMap<Language, Vec<PathBuf>> = files_by_lang
+        .iter()
+        .map(|(&lang, files)| (lang, files.clone()))
+        .collect();
 
     for result in &parse_results {
+        let resolver = match resolvers.get(&result.language) {
+            Some(r) => r,
+            None => continue,
+        };
+        let lang_files = files_by_lang_for_resolve
+            .get(&result.language)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+
         for raw in &result.imports {
             if raw.confidence == ImportConfidence::External
                 || raw.confidence == ImportConfidence::Dynamic
@@ -247,7 +273,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 continue;
             }
 
-            match resolver.resolve(raw, &root, &project_files) {
+            match resolver.resolve(raw, &root, lang_files) {
                 Some(target_module) => {
                     builder.add_import(&ResolvedImport {
                         source_module: result.source_module.clone(),
@@ -257,6 +283,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                             line: raw.line,
                             column: raw.column,
                         },
+                        language: Some(result.language),
                     });
                 }
                 None => {
@@ -298,8 +325,42 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         0.0
     };
 
+    // Build language string and per-language stats
+    let language_str = if langs.len() == 1 {
+        langs[0].to_string()
+    } else {
+        langs
+            .iter()
+            .map(|l| l.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    };
+
+    // Count nodes per language from the graph
+    let mut nodes_per_lang: HashMap<Language, usize> = HashMap::new();
+    for idx in graph.node_indices() {
+        if let Some(lang) = graph[idx].language {
+            *nodes_per_lang.entry(lang).or_insert(0) += 1;
+        }
+    }
+
+    let languages = if langs.len() > 1 {
+        Some(
+            langs
+                .iter()
+                .map(|&lang| LanguageStats {
+                    language: lang.to_string(),
+                    files_parsed: per_lang_files_parsed.get(&lang).copied().unwrap_or(0),
+                    nodes: nodes_per_lang.get(&lang).copied().unwrap_or(0),
+                })
+                .collect(),
+        )
+    } else {
+        None
+    };
+
     let metadata = Metadata {
-        language: lang.to_string(),
+        language: language_str,
         granularity: "module".to_string(),
         root: root.clone(),
         node_count,
@@ -311,6 +372,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         timestamp: chrono_now(),
         elapsed_ms,
         modules_per_second: (modules_per_second * 10.0).round() / 10.0,
+        languages,
     };
 
     let mut stdout = std::io::stdout();

@@ -35,6 +35,15 @@ pub struct Metadata {
     pub timestamp: String,
     pub elapsed_ms: u64,
     pub modules_per_second: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub languages: Option<Vec<LanguageStats>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LanguageStats {
+    pub language: String,
+    pub files_parsed: usize,
+    pub nodes: usize,
 }
 
 #[derive(Debug, Serialize)]

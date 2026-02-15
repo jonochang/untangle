@@ -1,5 +1,6 @@
-use crate::graph::ir::{DepGraph, GraphEdge, GraphNode, NodeKind};
+use crate::graph::ir::{DepGraph, EdgeKind, GraphEdge, GraphNode, NodeKind};
 use crate::parse::common::SourceLocation;
+use crate::walk::Language;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -9,6 +10,7 @@ pub struct ResolvedImport {
     pub source_module: PathBuf,
     pub target_module: PathBuf,
     pub location: SourceLocation,
+    pub language: Option<Language>,
 }
 
 /// Builds a DepGraph from resolved imports with node and edge deduplication.
@@ -26,7 +28,11 @@ impl GraphBuilder {
     }
 
     /// Get or create a node for the given module path.
-    fn ensure_node(&mut self, path: &PathBuf) -> petgraph::graph::NodeIndex {
+    fn ensure_node(
+        &mut self,
+        path: &PathBuf,
+        language: Option<Language>,
+    ) -> petgraph::graph::NodeIndex {
         if let Some(&idx) = self.node_map.get(path) {
             return idx;
         }
@@ -43,6 +49,7 @@ impl GraphBuilder {
             path: path.clone(),
             name,
             span: None,
+            language,
         });
         self.node_map.insert(path.clone(), idx);
         idx
@@ -50,8 +57,8 @@ impl GraphBuilder {
 
     /// Add a resolved import to the graph.
     pub fn add_import(&mut self, import: &ResolvedImport) {
-        let source_idx = self.ensure_node(&import.source_module);
-        let target_idx = self.ensure_node(&import.target_module);
+        let source_idx = self.ensure_node(&import.source_module, import.language);
+        let target_idx = self.ensure_node(&import.target_module, import.language);
 
         // Check if edge already exists
         if let Some(edge_idx) = self.graph.find_edge(source_idx, target_idx) {
@@ -64,6 +71,7 @@ impl GraphBuilder {
                 source_idx,
                 target_idx,
                 GraphEdge {
+                    kind: EdgeKind::Import,
                     source_locations: vec![import.location.clone()],
                     weight: 1,
                 },
@@ -110,6 +118,7 @@ mod tests {
                 line: 1,
                 column: None,
             },
+            language: None,
         };
         let import2 = ResolvedImport {
             source_module: PathBuf::from("a.go"),
@@ -119,6 +128,7 @@ mod tests {
                 line: 2,
                 column: None,
             },
+            language: None,
         };
         builder.add_import(&import1);
         builder.add_import(&import2);
@@ -138,6 +148,7 @@ mod tests {
                 line: 1,
                 column: None,
             },
+            language: None,
         };
         let import2 = ResolvedImport {
             source_module: PathBuf::from("a.go"),
@@ -147,6 +158,7 @@ mod tests {
                 line: 5,
                 column: None,
             },
+            language: None,
         };
         builder.add_import(&import1);
         builder.add_import(&import2);

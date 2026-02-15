@@ -7,6 +7,7 @@ pub mod show;
 
 use crate::walk::Language;
 use provenance::ProvenanceMap;
+use serde::Serialize;
 use std::path::PathBuf;
 
 /// Fully resolved configuration — no Option fields.
@@ -39,9 +40,23 @@ pub struct ResolvedConfig {
     // Per-path overrides (compiled globs)
     pub overrides: Vec<(globset::GlobMatcher, OverrideEntry)>,
 
+    // Services for cross-service dependency tracking
+    pub services: Vec<ResolvedService>,
+
     // Provenance
     pub provenance: ProvenanceMap,
     pub loaded_files: Vec<PathBuf>,
+}
+
+/// Resolved service declaration for cross-service dependency tracking.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResolvedService {
+    pub name: String,
+    pub root: PathBuf,
+    pub lang: Option<Language>,
+    pub graphql_schemas: Vec<PathBuf>,
+    pub openapi_specs: Vec<PathBuf>,
+    pub base_urls: Vec<String>,
 }
 
 /// Entry for a per-path override.

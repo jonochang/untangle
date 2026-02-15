@@ -1,0 +1,14 @@
+[services.user-api]
+root = "services/user-api"
+lang = "go"
+graphql_schemas = ["services/user-api/schema.graphql"]
+
+[services.post-api]
+root = "services/post-api"
+lang = "ruby"
+base_urls = ["/api/v1/posts"]
+openapi_specs = ["services/post-api/openapi.yaml"]
+
+[services.web-frontend]
+root = "services/web-frontend"
+lang = "python"

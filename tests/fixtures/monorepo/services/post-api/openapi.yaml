@@ -1,0 +1,16 @@
+openapi: "3.0.0"
+info:
+  title: Post API
+  version: "1.0"
+paths:
+  /api/v1/posts:
+    get:
+      operationId: listPosts
+      summary: List all posts
+    post:
+      operationId: createPost
+      summary: Create a post
+  /api/v1/posts/{id}:
+    get:
+      operationId: getPost
+      summary: Get a post

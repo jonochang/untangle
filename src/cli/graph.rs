@@ -3,11 +3,13 @@ use crate::errors::{Result, UntangleError};
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, SourceLocation};
-use crate::parse::{
-    go::GoFrontend, python::PythonFrontend, ruby::RubyFrontend, rust::RustFrontend, ParseFrontend,
-};
+use crate::parse::factory;
+use crate::parse::go::GoFrontend;
+use crate::parse::rust::RustFrontend;
+use crate::parse::ParseFrontend;
 use crate::walk::{self, Language};
 use clap::Args;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Args)]
@@ -72,55 +74,87 @@ pub fn run(args: &GraphArgs) -> Result<()> {
 
     let format: OutputFormat = config.format.parse().unwrap_or(OutputFormat::Dot);
 
-    let lang = match config.lang {
-        Some(l) => l,
-        None => walk::detect_language(&root)
-            .ok_or_else(|| UntangleError::NoFiles { path: root.clone() })?,
-    };
-
     // Merge ignore_patterns into exclude list
     let mut exclude = config.exclude.clone();
     exclude.extend(config.ignore_patterns.iter().cloned());
 
-    let files = walk::discover_files(&root, lang, &config.include, &exclude, config.include_tests)?;
-
-    if files.is_empty() {
-        return Err(UntangleError::NoFiles { path: root });
-    }
-
-    let frontend: Box<dyn ParseFrontend> = match lang {
-        Language::Go => {
-            let module_path = GoFrontend::read_go_mod(&root);
-            Box::new(match module_path {
-                Some(mp) => GoFrontend::with_module_path(mp),
-                None => GoFrontend::new(),
-            })
+    // Determine languages and discover files
+    let (langs, files_by_lang): (Vec<Language>, HashMap<Language, Vec<PathBuf>>) = match config.lang
+    {
+        Some(l) => {
+            let files =
+                walk::discover_files(&root, l, &config.include, &exclude, config.include_tests)?;
+            let mut map = HashMap::new();
+            if !files.is_empty() {
+                map.insert(l, files);
+            }
+            (vec![l], map)
         }
-        Language::Python => Box::new(PythonFrontend::new()),
-        Language::Ruby => Box::new(RubyFrontend::new()),
-        Language::Rust => {
-            let crate_name = RustFrontend::read_cargo_toml(&root);
-            Box::new(match crate_name {
-                Some(name) => RustFrontend::with_crate_name(name),
-                None => RustFrontend::new(),
-            })
+        None => {
+            let map =
+                walk::discover_files_multi(&root, &config.include, &exclude, config.include_tests)?;
+            let mut langs: Vec<Language> = map.keys().copied().collect();
+            langs.sort_by(|a, b| {
+                map.get(b)
+                    .map(|v| v.len())
+                    .unwrap_or(0)
+                    .cmp(&map.get(a).map(|v| v.len()).unwrap_or(0))
+            });
+            (langs, map)
         }
     };
 
-    let mut builder = GraphBuilder::new();
-    let project_files = files.clone();
+    let all_files: Vec<(Language, PathBuf)> = langs
+        .iter()
+        .flat_map(|&lang| {
+            files_by_lang
+                .get(&lang)
+                .map(|files| files.iter().map(move |f| (lang, f.clone())))
+                .into_iter()
+                .flatten()
+        })
+        .collect();
 
-    for file_path in &files {
+    if all_files.is_empty() {
+        return Err(UntangleError::NoFiles { path: root });
+    }
+
+    // Read go.mod and Cargo.toml if relevant languages are present
+    let go_module_path = if langs.contains(&Language::Go) {
+        GoFrontend::read_go_mod(&root)
+    } else {
+        None
+    };
+    let rust_crate_name = if langs.contains(&Language::Rust) {
+        RustFrontend::read_cargo_toml(&root)
+    } else {
+        None
+    };
+
+    // Create resolvers per language
+    let resolvers: HashMap<Language, Box<dyn ParseFrontend>> = langs
+        .iter()
+        .map(|&lang| {
+            let frontend =
+                factory::create_frontend(lang, &config, &go_module_path, &rust_crate_name);
+            (lang, frontend)
+        })
+        .collect();
+
+    let mut builder = GraphBuilder::new();
+
+    for (lang, file_path) in &all_files {
         let source = match std::fs::read(file_path) {
             Ok(s) => s,
             Err(_) => continue,
         };
 
+        let frontend = factory::create_frontend(*lang, &config, &go_module_path, &rust_crate_name);
         let imports = frontend.extract_imports(&source, file_path);
-        let source_module = file_path
-            .strip_prefix(&root)
-            .unwrap_or(file_path)
-            .to_path_buf();
+        let source_module = factory::source_module_path(file_path, &root, *lang);
+
+        let lang_files = files_by_lang.get(lang).map(|v| v.as_slice()).unwrap_or(&[]);
+        let resolver = resolvers.get(lang).unwrap();
 
         for raw in &imports {
             if raw.confidence == ImportConfidence::External
@@ -130,7 +164,7 @@ pub fn run(args: &GraphArgs) -> Result<()> {
                 continue;
             }
 
-            if let Some(target) = frontend.resolve(raw, &root, &project_files) {
+            if let Some(target) = resolver.resolve(raw, &root, lang_files) {
                 builder.add_import(&ResolvedImport {
                     source_module: source_module.clone(),
                     target_module: target,
@@ -139,6 +173,7 @@ pub fn run(args: &GraphArgs) -> Result<()> {
                         line: raw.line,
                         column: raw.column,
                     },
+                    language: Some(*lang),
                 });
             }
         }

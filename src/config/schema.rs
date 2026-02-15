@@ -20,10 +20,25 @@ pub struct FileConfig {
     pub ruby: RubyFileConfig,
     #[serde(default)]
     pub overrides: HashMap<String, OverrideFileConfig>,
+    #[serde(default)]
+    pub services: HashMap<String, ServiceFileConfig>,
 
     // Backward compatibility: old format had [thresholds] section
     #[serde(default)]
     pub thresholds: Option<LegacyThresholdsConfig>,
+}
+
+/// Service declaration for cross-service dependency tracking.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ServiceFileConfig {
+    pub root: String,
+    pub lang: Option<String>,
+    #[serde(default)]
+    pub graphql_schemas: Vec<String>,
+    #[serde(default)]
+    pub openapi_specs: Vec<String>,
+    #[serde(default)]
+    pub base_urls: Vec<String>,
 }
 
 /// Backward compat: old [defaults] had `exclude` which maps to targeting.exclude
@@ -316,5 +331,50 @@ exclude_stdlib = true
         assert_eq!(hf.min_fanout, Some(15));
         let cd = config.rules.circular_dependency.as_ref().unwrap();
         assert_eq!(cd.warning_min_size, Some(3));
+    }
+
+    #[test]
+    fn deserialize_services_config() {
+        let toml_str = r#"
+[services.user-api]
+root = "services/user-api"
+lang = "go"
+graphql_schemas = ["services/user-api/schema.graphql"]
+
+[services.post-api]
+root = "services/post-api"
+lang = "ruby"
+base_urls = ["/api/v1/posts"]
+openapi_specs = ["services/post-api/openapi.yaml"]
+
+[services.web-frontend]
+root = "services/web-frontend"
+lang = "python"
+"#;
+        let config = FileConfig::from_toml(toml_str).unwrap();
+        assert_eq!(config.services.len(), 3);
+
+        let user_api = &config.services["user-api"];
+        assert_eq!(user_api.root, "services/user-api");
+        assert_eq!(user_api.lang.as_deref(), Some("go"));
+        assert_eq!(
+            user_api.graphql_schemas,
+            vec!["services/user-api/schema.graphql"]
+        );
+        assert!(user_api.openapi_specs.is_empty());
+        assert!(user_api.base_urls.is_empty());
+
+        let post_api = &config.services["post-api"];
+        assert_eq!(post_api.root, "services/post-api");
+        assert_eq!(post_api.lang.as_deref(), Some("ruby"));
+        assert_eq!(post_api.base_urls, vec!["/api/v1/posts"]);
+        assert_eq!(
+            post_api.openapi_specs,
+            vec!["services/post-api/openapi.yaml"]
+        );
+
+        let web = &config.services["web-frontend"];
+        assert_eq!(web.root, "services/web-frontend");
+        assert_eq!(web.lang.as_deref(), Some("python"));
     }
 }

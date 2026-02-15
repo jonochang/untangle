@@ -1,6 +1,16 @@
 use crate::errors::Result;
 use crate::graph::ir::DepGraph;
+use crate::walk::Language;
 use std::io::Write;
+
+fn language_color(lang: Language) -> &'static str {
+    match lang {
+        Language::Go => "lightblue",
+        Language::Python => "lightyellow",
+        Language::Ruby => "lightcoral",
+        Language::Rust => "lightsalmon",
+    }
+}
 
 /// Write the dependency graph in Graphviz DOT format.
 pub fn write_dot<W: Write>(writer: &mut W, graph: &DepGraph) -> Result<()> {
@@ -16,7 +26,16 @@ pub fn write_dot<W: Write>(writer: &mut W, graph: &DepGraph) -> Result<()> {
     for idx in graph.node_indices() {
         let node = &graph[idx];
         let label = &node.name;
-        writeln!(writer, "    \"{}\" [label=\"{}\"];", node.name, label)?;
+        if let Some(lang) = node.language {
+            let color = language_color(lang);
+            writeln!(
+                writer,
+                "    \"{}\" [label=\"{}\" fillcolor={}];",
+                node.name, label, color
+            )?;
+        } else {
+            writeln!(writer, "    \"{}\" [label=\"{}\"];", node.name, label)?;
+        }
     }
     writeln!(writer)?;
 
@@ -45,7 +64,7 @@ pub fn write_dot<W: Write>(writer: &mut W, graph: &DepGraph) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::ir::{GraphEdge, GraphNode, NodeKind};
+    use crate::graph::ir::{EdgeKind, GraphEdge, GraphNode, NodeKind};
     use std::path::PathBuf;
 
     #[test]
@@ -56,17 +75,20 @@ mod tests {
             path: PathBuf::from("a"),
             name: "a".to_string(),
             span: None,
+            language: None,
         });
         let b = graph.add_node(GraphNode {
             kind: NodeKind::Module,
             path: PathBuf::from("b"),
             name: "b".to_string(),
             span: None,
+            language: None,
         });
         graph.add_edge(
             a,
             b,
             GraphEdge {
+                kind: EdgeKind::default(),
                 source_locations: vec![],
                 weight: 1,
             },

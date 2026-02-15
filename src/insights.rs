@@ -469,7 +469,7 @@ pub fn generate_insights_with_config(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::ir::{GraphEdge, GraphNode, NodeKind};
+    use crate::graph::ir::{EdgeKind, GraphEdge, GraphNode, NodeKind};
     use crate::metrics::scc::find_non_trivial_sccs;
     use crate::metrics::summary::Summary;
     use std::path::PathBuf;
@@ -480,11 +480,13 @@ mod tests {
             path: PathBuf::from(name),
             name: name.to_string(),
             span: None,
+            language: None,
         }
     }
 
     fn make_edge() -> GraphEdge {
         GraphEdge {
+            kind: EdgeKind::default(),
             source_locations: vec![],
             weight: 1,
         }
