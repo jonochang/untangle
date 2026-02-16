@@ -4,6 +4,11 @@ version = "0.2.0"
 edition = "2021"
 description = "Module-level dependency graph analyzer for Python, Ruby, Go, and Rust"
 license = "MIT OR Apache-2.0"
+homepage = "https://github.com/jonochang/untangle"
+repository = "https://github.com/jonochang/untangle"
+readme = "README.md"
+keywords = ["dependency-graph", "static-analysis", "tree-sitter", "code-quality"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "untangle"
