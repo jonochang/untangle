@@ -15,6 +15,7 @@ The core question it answers: **"Did this change make the dependency structure w
 | **Python** | `import x`, `from x import y`, relative imports | Module-level (file → file) |
 | **Ruby** | `require`, `require_relative`, `autoload`, Zeitwerk conventions | File-level |
 | **Go** | `import "path/pkg"` | Package-level (directory → directory) |
+| **Rust** | `use crate::...` | Module-level (file → file) |
 
 Each language requires a dedicated parser frontend that produces a common intermediate graph representation.
 
@@ -87,6 +88,8 @@ Function-level analysis answers a different question ("which function is the act
 untangle analyze [OPTIONS] <PATH>
 untangle diff [OPTIONS] --base <REF> --head <REF> [PATH]
 untangle graph [OPTIONS] <PATH>
+untangle config <show|explain> [--path <DIR>]
+untangle service-graph <PATH> [--format json|text|dot]
 ```
 
 ### `analyze` — Single-snapshot analysis
@@ -123,25 +126,42 @@ untangle graph ./src --lang ruby --format dot > deps.dot
 
 **Outputs:** Raw dependency graph in DOT or JSON format for external tooling (NetworkX, Graphviz, etc).
 
+### `config` — Inspect resolved configuration
+
+```
+untangle config show
+untangle config explain high_fanout
+```
+
+**Outputs:** Resolved configuration with provenance, or an explanation of a specific rule category.
+
+### `service-graph` — Cross-service dependency analysis
+
+```
+untangle service-graph . --format json
+```
+
+**Outputs:** Cross-service dependency edges derived from GraphQL/OpenAPI usage.
+
 ### Global Options
 
 | Flag | Description |
 |------|-------------|
-| `--lang <LANG>` | `python`, `ruby`, `go`. Auto-detect if omitted (inspect file extensions). |
+| `--lang <LANG>` | `python`, `ruby`, `go`, `rust`. Auto-detect if omitted (inspect file extensions). |
 | `--exclude <GLOB>` | Exclude paths (e.g. `--exclude "vendor/**" --exclude "test/**"`) |
 | `--include <GLOB>` | Restrict analysis to matching paths |
-| `--config <FILE>` | Path to `.untangle.toml` config file |
 | `--format <FMT>` | `json` (default), `text`, `dot`, `sarif` |
 | `--quiet` | Machine-readable output only, no progress/decoration/timing |
 
 ### Runtime Reporting
 
-All commands print a timing summary as the final line of output:
+Timing and throughput are reported as follows:
 
-- **`text` format:** Appended to the end of the report: `Completed in 0.85s (403 modules/sec)`
-- **`json` / `sarif` format:** Included as `elapsed_ms` and `modules_per_second` fields in the output
-- **`dot` format:** Printed to stderr (so it doesn't corrupt the graph output)
-- **`--quiet` flag:** Suppresses the stderr timing line. The JSON/SARIF fields are still present in stdout.
+- **`analyze` (text):** Appends `Completed in ...` to the report.
+- **`analyze` (json/sarif):** Includes `elapsed_ms` and `modules_per_second` in output.
+- **`analyze` (dot):** Prints a completion line to stderr (unless `--quiet`).
+- **`diff` (text/json):** Includes `elapsed_ms` and `modules_per_second` in output; text format ends with `Completed in ...`.
+- **`graph` / `service-graph`:** Do not report timing or throughput.
 
 `modules_per_second` is computed as `node_count / (elapsed_ms / 1000)`. For `diff`, it reflects the total modules analyzed across both revisions.
 
@@ -176,7 +196,10 @@ All commands print a timing summary as the final line of output:
     "max_fanin": 41,
     "scc_count": 4,
     "largest_scc_size": 12,
-    "total_nodes_in_sccs": 29
+    "total_nodes_in_sccs": 29,
+    "max_depth": 7,
+    "avg_depth": 4.2,
+    "total_complexity": 1557
   },
   "hotspots": [
     {
@@ -227,7 +250,10 @@ All commands print a timing summary as the final line of output:
     "net_edge_change": 8,
     "scc_count_delta": 1,
     "largest_scc_size_delta": 4,
-    "mean_fanout_delta": 0.31
+    "mean_fanout_delta": 0.31,
+    "mean_entropy_delta": 0.08,
+    "max_depth_delta": 1,
+    "total_complexity_delta": 27
   },
   "new_edges": [
     {
@@ -281,8 +307,7 @@ For GitHub Advanced Security / Code Scanning integration, emit results as SARIF 
 | Code | Meaning |
 |------|---------|
 | `0` | Analysis complete, no policy violations |
-| `1` | Analysis complete, one or more `--fail-on` conditions triggered |
-| `2` | Analysis could not complete (parse errors, missing files, bad git ref) |
+| `1` | One or more `--fail-on` conditions triggered, or an error occurred |
 
 ### `--fail-on` conditions
 
@@ -378,16 +403,16 @@ exclude_stdlib = true
 | Syntax error in source file | Warn, skip the file, continue. Report count of skipped files. |
 | Encoding issues (non-UTF8) | Attempt detection, fall back to skip + warn. |
 | Circular symlinks in file tree | Detect via visited-inode tracking, skip + warn. |
-| Empty project (no parseable files) | Exit code 2 with clear error message. |
+| Empty project (no parseable files) | Exit code 1 with clear error message. |
 
 ### Git / Diff Failures
 
 | Failure | Handling |
 |---------|----------|
-| Base ref doesn't exist | Exit code 2, message: "Could not resolve base ref: {ref}" |
+| Base ref doesn't exist | Exit code 1, message: "Could not resolve base ref: {ref}" |
 | Uncommitted changes in work tree | Warn that head analysis uses working tree state. |
 | Binary files / submodules | Skip, they contain no import statements. |
-| Merge conflicts present | Exit code 2, cannot parse conflicted files. |
+| Merge conflicts present | Exit code 1, cannot parse conflicted files. |
 
 ### Graph Anomalies
 
@@ -427,13 +452,13 @@ exclude_stdlib = true
 │                    CLI (clap)                     │
 ├──────────────────────────────────────────────────┤
 │              Command Dispatcher                   │
-│         analyze │ diff │ graph                    │
+│   analyze │ diff │ graph │ config │ service-graph │
 ├──────────┬──────┴──────┬─────────────────────────┤
-│  Python  │    Ruby     │    Go                    │
-│  Parser  │   Parser    │   Parser                 │
-│          │             │                          │
-│  (tree-  │  (tree-     │  (tree-                  │
-│  sitter) │  sitter)    │  sitter)                 │
+│  Python  │    Ruby     │    Go    │    Rust        │
+│  Parser  │   Parser    │  Parser  │   Parser       │
+│          │             │          │                │
+│  (tree-  │  (tree-     │  (tree-  │  (tree-        │
+│  sitter) │  sitter)    │  sitter) │  sitter)       │
 ├──────────┴─────────────┴─────────────────────────┤
 │          Common Graph IR (petgraph)               │
 ├──────────────────────────────────────────────────┤
@@ -450,6 +475,7 @@ exclude_stdlib = true
 **Key crate choices:**
 
 - `tree-sitter` + language grammars for parsing (fast, incremental, handles broken syntax gracefully)
+- `graphql-parser` + `serde_yaml` for service schema parsing (GraphQL/OpenAPI)
 - `petgraph` for graph data structure and algorithms (Tarjan's SCC is built-in)
 - `clap` for CLI argument parsing
 - `serde` / `serde_json` for output serialization
@@ -458,7 +484,7 @@ exclude_stdlib = true
 
 **Why tree-sitter over regex or full AST parsing:** Tree-sitter produces a concrete syntax tree even for files with syntax errors (partial parse). This is critical for robustness — a single broken file should never crash the entire analysis. It also gives consistent cross-language API for the import extraction layer.
 
-**Graph IR design for future extensibility:** Each parser frontend produces `Vec<RawImport>` per file, which the graph builder resolves into edges on the common `petgraph::DiGraph<GraphNode, GraphEdge>`. The `GraphNode.kind` discriminator (`Module` | `Function`) and `GraphEdge.source_locations` fields are present in v1 but only `Module` nodes are emitted. Adding function-level granularity later requires only changes to the parser frontends (extracting function boundaries and resolving which imports are referenced within each function body), not the metrics engine or output formatters.
+**Graph IR design for future extensibility:** Each parser frontend produces `Vec<RawImport>` per file, which the graph builder resolves into edges on the common `petgraph::DiGraph<GraphNode, GraphEdge>`. The `GraphNode.kind` discriminator (`Module` | `Function` | `Service` | `Endpoint`) and `GraphEdge.source_locations` fields are present in v1 but only `Module` nodes are emitted in code-level analysis. Adding function-level granularity later requires only changes to the parser frontends (extracting function boundaries and resolving which imports are referenced within each function body), not the metrics engine or output formatters.
 
 ---
 

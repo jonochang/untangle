@@ -16,5 +16,6 @@ The default format is `json`, configurable via the [config file](../configuratio
 | Command | JSON | Text | DOT | SARIF |
 |---------|------|------|-----|-------|
 | `analyze` | Default | Full report | Graph only | Warnings |
-| `diff` | Default | - | - | - |
-| `graph` | Nodes + edges | - | Default | - |
+| `diff` | Default | Summary + changes | - | Falls back to JSON (warning) |
+| `graph` | Nodes + edges | - | Graph visualization | - |
+| `service-graph` | Default | Summary + edges | Graph visualization | - |

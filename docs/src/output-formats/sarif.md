@@ -8,6 +8,8 @@ Untangle can output results in [SARIF 2.1.0](https://sarifweb.azurewebsites.net/
 untangle analyze ./src --lang python --format sarif > results.sarif
 ```
 
+Note: SARIF is supported for `analyze` only. `diff` currently falls back to JSON with a warning, and `service-graph` does not support SARIF.
+
 ## Rules
 
 The SARIF output includes two rule definitions:

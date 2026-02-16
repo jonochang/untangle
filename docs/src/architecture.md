@@ -6,7 +6,7 @@ This page provides an overview of the internal module structure for contributors
 
 ```
 CLI (clap)
-  └─ Commands: analyze, diff, graph, config
+  └─ Commands: analyze, diff, graph, config, service-graph
        └─ Config resolution (5-layer merge)
        └─ File discovery (walkdir + globset)
        └─ Parsing (tree-sitter, per-language frontends)
@@ -28,6 +28,7 @@ Command implementations. Each subcommand lives in its own file:
 | `diff.rs` | `DiffArgs`, `FailCondition`, git ref graph building, diff computation, policy evaluation |
 | `graph.rs` | `GraphArgs`, DOT/JSON graph export |
 | `config.rs` | `ConfigArgs`, `ConfigAction::Show/Explain` |
+| `service_graph.rs` | `ServiceGraphArgs`, cross-service dependency detection |
 
 ### `src/config/`
 
@@ -54,6 +55,10 @@ Language frontends using tree-sitter:
 | `ruby.rs` | `RubyFrontend` — `require`/`require_relative` extraction |
 | `go.rs` | `GoFrontend` — `import` declarations, `go.mod` module path |
 | `rust.rs` | `RustFrontend` — `use` statements, scoped imports, `Cargo.toml` |
+| `graphql.rs` | GraphQL schema parsing |
+| `graphql_client.rs` | GraphQL client usage detection |
+| `openapi.rs` | OpenAPI spec parsing |
+| `rest_client.rs` | REST client usage detection |
 
 Each frontend implements the `ParseFrontend` trait:
 - `extract_imports()` — parse source bytes into `Vec<RawImport>`

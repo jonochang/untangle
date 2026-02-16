@@ -32,7 +32,7 @@ untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
 - **Fan-out entropy** — Shannon entropy of outgoing edges. Distinguishes "depends on 10 things equally" from "depends on 10 things but 90% on one."
 - **Strongly connected components** — circular dependency clusters. The hardest structural debt to unwind.
 - **SCC-adjusted entropy** — penalises complexity inside circular clusters.
-- **Edge provenance** — every edge carries the exact source file and line number that caused it.
+- **Edge provenance** — every edge carries the source module path and import line/column. (For Go, the path is the package directory.)
 
 ## CI Integration
 
@@ -47,8 +47,7 @@ untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
 | Exit Code | Meaning |
 |-----------|---------|
 | `0` | No policy violations |
-| `1` | One or more `--fail-on` conditions triggered |
-| `2` | Analysis could not complete |
+| `1` | One or more `--fail-on` conditions triggered, or an error occurred |
 
 ### Fail-on Conditions
 
@@ -119,8 +118,8 @@ For `diff`, untangle reads files at arbitrary git refs via [libgit2](https://lib
 
 ## Design Documents
 
-- [Requirements specification](docs/requirements.md) — what the tool does, output formats, failure modes
-- [Technical design](docs/design.md) — Rust implementation plan, data model, testing strategy
+- [Requirements specification](docs/specs/untangle-requirements.md) — what the tool does, output formats, failure modes
+- [Technical design](docs/specs/untangle-design.md) — Rust implementation plan, data model, testing strategy
 
 ## License
 

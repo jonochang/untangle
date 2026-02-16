@@ -1,12 +1,11 @@
 # Exit Codes
 
-Untangle uses three exit codes:
+Untangle uses two exit codes:
 
 | Exit Code | Meaning |
 |-----------|---------|
 | `0` | Success — no policy violations |
-| `1` | Policy violation — one or more `--fail-on` conditions triggered |
-| `2` | Error — analysis could not complete |
+| `1` | Policy violation or error |
 
 ## When Each Code Is Used
 
@@ -23,13 +22,7 @@ Untangle uses three exit codes:
 
 This is the primary CI gate mechanism. The `reasons` field in the JSON output lists which conditions triggered.
 
-### Exit Code 2
-
-- Any command: Fatal error preventing analysis
-  - No source files found at the given path
-  - Invalid git refs for `diff`
-  - Unreadable config file
-  - Invalid path
+In addition, errors (invalid path, unreadable config, bad git ref, no files found) also exit with code `1`.
 
 ## CI Usage
 

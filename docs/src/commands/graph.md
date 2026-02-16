@@ -56,7 +56,7 @@ untangle graph ./src --lang python --format dot | dot -Tsvg -o /tmp/deps.svg && 
 The DOT output produces a valid Graphviz `digraph` with:
 
 - Left-to-right layout (`rankdir=LR`)
-- Box-shaped nodes with light blue fill
+- Box-shaped nodes with language-based fill colors
 - Edge labels showing reference count when a dependency appears in multiple import statements
 
 ```dot

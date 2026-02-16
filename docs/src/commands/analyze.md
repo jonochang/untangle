@@ -72,4 +72,4 @@ Progress information is written to stderr (suppress with `--quiet`).
 | Code | Meaning |
 |------|---------|
 | `0` | Analysis completed successfully |
-| `2` | Analysis could not complete (no files found, invalid path, etc.) |
+| `1` | Analysis could not complete (no files found, invalid path, etc.) |

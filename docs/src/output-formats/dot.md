@@ -33,7 +33,7 @@ digraph dependencies {
 ### Features
 
 - **Left-to-right layout** (`rankdir=LR`) for readability
-- **Box-shaped nodes** with light blue fill
+- **Box-shaped nodes** with language-based fill colors (light blue for Go, light yellow for Python, light coral for Ruby, light salmon for Rust)
 - **Edge labels** showing the number of import references when there are multiple import sites for the same edge
 
 ## Rendering Tools

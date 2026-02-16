@@ -18,7 +18,16 @@ JSON is the default output format, designed for programmatic consumption in CI p
     "unresolved_imports": 14,
     "timestamp": "...",
     "elapsed_ms": 850,
-    "modules_per_second": 402.4
+    "modules_per_second": 402.4,
+    "languages": [
+      {
+        "language": "python",
+        "files_parsed": 340,
+        "nodes": 342,
+        "imports_resolved": 1194,
+        "imports_unresolved": 14
+      }
+    ]
   },
   "summary": {
     "mean_fanout": 3.53,
@@ -94,6 +103,7 @@ JSON is the default output format, designed for programmatic consumption in CI p
     "scc_count_delta": 1,
     "largest_scc_size_delta": 3,
     "mean_fanout_delta": 0.15,
+    "mean_entropy_delta": 0.08,
     "max_depth_delta": 1,
     "total_complexity_delta": 27
   },
@@ -128,13 +138,40 @@ JSON is the default output format, designed for programmatic consumption in CI p
 }
 ```
 
+## Service-Graph Output Schema
+
+```json
+{
+  "services": [
+    {
+      "name": "billing",
+      "root": "services/billing",
+      "language": "python",
+      "file_count": 412
+    }
+  ],
+  "cross_service_edges": [
+    {
+      "from_service": "web",
+      "to_service": "billing",
+      "kind": "rest_call",
+      "operation": "POST /v1/invoices",
+      "source_locations": [
+        { "file": "services/web/src/api/client.py", "line": 42, "column": 0 }
+      ]
+    }
+  ]
+}
+```
+
 ## Key Fields
 
 ### metadata
 
 | Field | Description |
 |-------|-------------|
-| `language` | Language that was analyzed |
+| `language` | Language that was analyzed (`multi` in multi-language mode) |
+| `languages` | Per-language stats (present in multi-language mode) |
 | `granularity` | Always `"module"` |
 | `node_count` | Number of modules in the graph |
 | `edge_count` | Number of dependency edges |
@@ -142,6 +179,7 @@ JSON is the default output format, designed for programmatic consumption in CI p
 | `files_parsed` | Number of files successfully parsed |
 | `files_skipped` | Number of files that could not be read |
 | `unresolved_imports` | External, dynamic, or unresolvable imports |
+| `timestamp` | UTC timestamp when analysis completed |
 | `elapsed_ms` | Wall-clock time in milliseconds |
 | `modules_per_second` | Processing throughput |
 

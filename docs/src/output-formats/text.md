@@ -22,6 +22,14 @@ Skipped:    2 files
 Unresolved: 14 imports
 ```
 
+In multi-language mode, the header lists per-language stats instead of a single `Language` line:
+
+```
+Languages:
+  - python (340 files, 342 nodes, 1194/1208 imports resolved)
+  - ruby (12 files, 18 nodes, 31/37 imports resolved)
+```
+
 ### Summary
 
 ```

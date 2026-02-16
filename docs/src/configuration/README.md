@@ -38,6 +38,7 @@ conditions = ["fanout-increase", "new-scc"]
 - [Per-Path Overrides](./overrides.md) — different rules for different paths
 - [.untangleignore](./untangleignore.md) — gitignore-style file exclusion
 - [Environment Variables](./environment-variables.md) — all `UNTANGLE_*` vars
+- [Services](./config-file.md#services) — cross-service dependency configuration
 
 ## Inspecting Configuration
 

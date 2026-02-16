@@ -10,7 +10,7 @@ The `--fail-on` flag specifies which structural regressions should cause `untang
 | `fanout-threshold=N` | Any module's fan-out exceeds N in the head |
 | `new-scc` | A new circular dependency cluster appeared |
 | `scc-growth` | An existing circular cluster gained members |
-| `entropy-increase` | Graph-level mean fan-out increased |
+| `entropy-increase` | Graph-level mean entropy increased |
 | `new-edge` | Any new dependency edge was added (strict mode) |
 
 ## Usage
@@ -63,7 +63,7 @@ Triggers if an existing SCC (matched by Jaccard similarity) has grown in size. A
 
 ### `entropy-increase`
 
-Triggers if the graph-level mean fan-out increased. This is a broad indicator of growing coupling.
+Triggers if the graph-level mean entropy increased. This is a broad indicator of growing coupling.
 
 ### `new-edge`
 

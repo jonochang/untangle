@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the implementation plan for `untangle`, a Rust CLI tool that builds module-level dependency graphs from Python, Ruby, and Go source code and computes structural complexity metrics. It is the companion to the requirements specification and covers project structure, crate selection, parsing strategy, data model, algorithms, testing approach, and build/release pipeline.
+This document describes the implementation plan for `untangle`, a Rust CLI tool that builds module-level dependency graphs from Python, Ruby, Go, and Rust source code, computes structural complexity metrics, and includes cross-service dependency analysis. It is the companion to the requirements specification and covers project structure, crate selection, parsing strategy, data model, algorithms, testing approach, and build/release pipeline.
 
 ---
 
@@ -12,33 +12,48 @@ This document describes the implementation plan for `untangle`, a Rust CLI tool 
 untangle/
 ├── Cargo.toml
 ├── Cargo.lock
-├── .untangle.toml                    # dogfood config
 ├── deny.toml                       # cargo-deny config
-├── cliff.toml                      # git-cliff changelog config
 ├── src/
 │   ├── main.rs                     # entry point, clap setup
 │   ├── cli/
 │   │   ├── mod.rs
 │   │   ├── analyze.rs              # analyze command handler
 │   │   ├── diff.rs                 # diff command handler
-│   │   └── graph.rs                # graph export command handler
+│   │   ├── graph.rs                # graph export command handler
+│   │   ├── config.rs               # config show/explain command handler
+│   │   └── service_graph.rs        # cross-service dependency graph
+│   ├── config/
+│   │   ├── mod.rs                  # ResolvedConfig + defaults
+│   │   ├── schema.rs               # TOML schema (FileConfig)
+│   │   ├── resolve.rs              # layered resolution logic
+│   │   ├── overrides.rs            # per-path rule overrides
+│   │   ├── ignore.rs               # .untangleignore loading
+│   │   ├── provenance.rs           # provenance tracking
+│   │   └── show.rs                 # render show/explain output
 │   ├── parse/
 │   │   ├── mod.rs                  # ParseFrontend trait
 │   │   ├── common.rs               # RawImport, SourceLocation types
+│   │   ├── factory.rs              # frontend factory + source module mapping
+│   │   ├── resolver.rs             # shared helpers (stdlib, zeitwerk, etc.)
 │   │   ├── python.rs               # Python import extraction
 │   │   ├── ruby.rs                 # Ruby require extraction
 │   │   ├── go.rs                   # Go import extraction
-│   │   └── resolver.rs             # Import path → graph node resolution
+│   │   ├── rust.rs                 # Rust use extraction
+│   │   ├── graphql.rs              # GraphQL schema parsing
+│   │   ├── graphql_client.rs       # GraphQL client usage detection
+│   │   ├── openapi.rs              # OpenAPI parsing
+│   │   └── rest_client.rs          # REST client usage detection
 │   ├── graph/
 │   │   ├── mod.rs                  # DepGraph type (wraps petgraph)
 │   │   ├── builder.rs              # RawImport[] → DepGraph construction
-│   │   ├── diff.rs                 # Graph delta computation
+│   │   ├── diff.rs                 # Diff result types
 │   │   └── ir.rs                   # GraphNode, GraphEdge, NodeKind
 │   ├── metrics/
 │   │   ├── mod.rs
 │   │   ├── fanout.rs               # fan-out, fan-in computation
 │   │   ├── entropy.rs              # Shannon entropy, SCC-adjusted entropy
 │   │   ├── scc.rs                  # Tarjan SCC wrapper, SCC metadata
+│   │   ├── depth.rs                # depth metrics
 │   │   └── summary.rs              # Aggregate stats (mean, p90, max)
 │   ├── output/
 │   │   ├── mod.rs                  # OutputFormat enum, dispatch
@@ -47,37 +62,26 @@ untangle/
 │   │   ├── dot.rs                  # Graphviz DOT format
 │   │   └── sarif.rs                # SARIF for GitHub code scanning
 │   ├── git.rs                      # git2 integration — read files at refs
-│   ├── config.rs                   # .untangle.toml loading (serde + toml)
+│   ├── insights.rs                 # insight generation
 │   ├── walk.rs                     # File discovery, glob filtering, symlink detection
 │   └── errors.rs                   # Error types (thiserror)
 ├── tests/
 │   ├── fixtures/
-│   │   ├── python/
-│   │   │   ├── simple_project/     # basic imports
-│   │   │   ├── relative_imports/   # from . import x
-│   │   │   ├── namespace_pkg/      # no __init__.py
-│   │   │   ├── dynamic_imports/    # importlib usage
-│   │   │   ├── star_imports/       # from x import *
-│   │   │   ├── circular/           # A→B→C→A
-│   │   │   └── syntax_error/       # broken .py file
-│   │   ├── ruby/
-│   │   │   ├── require_relative/
-│   │   │   ├── zeitwerk_project/
-│   │   │   ├── interpolated_require/
-│   │   │   └── load_path/
-│   │   ├── go/
-│   │   │   ├── simple_module/
-│   │   │   ├── internal_pkg/
-│   │   │   ├── build_tags/
-│   │   │   ├── vendor/
-│   │   │   └── generated_code/
-│   │   └── mixed/                  # multi-language edge case
+│   │   ├── go/                     # Go fixtures (simple_module, nested_modules, diff_repo)
+│   │   ├── python/                 # Python fixtures (simple_project, relative_imports, circular)
+│   │   ├── ruby/                   # Ruby fixtures (require_relative, zeitwerk_project)
+│   │   ├── rust/                   # Rust fixtures (simple_crate)
+│   │   ├── polyglot/               # Multi-language fixture
+│   │   └── monorepo/               # Example config + structure
 │   ├── integration/
 │   │   ├── analyze_test.rs         # end-to-end analyze command
-│   │   ├── diff_test.rs            # end-to-end diff command (uses git fixtures)
-│   │   ├── graph_test.rs           # export format validation
+│   │   ├── diff_test.rs            # end-to-end diff command
+│   │   ├── service_graph_test.rs   # service-graph tests
+│   │   ├── polyglot_test.rs        # multi-language analysis
+│   │   ├── config_test.rs          # config show/explain
 │   │   └── ci_exit_codes_test.rs   # verify exit code semantics
-│   └── snapshots/                  # insta snapshot files
+│   ├── integration.rs              # integration test harness
+│   └── proptest.rs                 # property-based tests
 ├── benches/
 │   ├── parse_bench.rs              # per-language parse throughput
 │   └── graph_bench.rs              # metrics computation on large graphs
@@ -100,7 +104,10 @@ untangle/
 | `tree-sitter-python` | Python grammar | |
 | `tree-sitter-ruby` | Ruby grammar | |
 | `tree-sitter-go` | Go grammar | |
+| `tree-sitter-rust` | Rust grammar | |
+| `graphql-parser` | GraphQL schema parsing | |
 | `serde` + `serde_json` | Serialisation | Output formats, config loading |
+| `serde_yaml` | YAML parsing | OpenAPI support |
 | `toml` | Config parsing | `.untangle.toml` |
 | `git2` | libgit2 bindings | Read files at arbitrary refs without checkout |
 | `globset` | Glob pattern matching | `--include`, `--exclude` |
@@ -115,7 +122,9 @@ untangle/
 | `walkdir` | Recursive directory traversal | Handles symlink cycle detection |
 | `ignore` | .gitignore-aware walking | Alternative to walkdir — respects `.gitignore` automatically |
 | `tracing` + `tracing-subscriber` | Structured logging | Warn on unresolvable imports, skipped files |
+| `streaming-iterator` | Tree-sitter iteration helper | |
 | `indicatif` | Progress bars | Gated behind `--quiet` |
+| `dirs` | User config discovery | `~/.config/untangle/config.toml` |
 
 ### Dev / Test
 
@@ -173,11 +182,13 @@ enum ImportKind {
     /// `from foo import bar` (Python)
     FromImport { module: String, names: Vec<String> },
     /// `from . import foo` (Python)
-    RelativeImport { level: usize, names: Vec<String> },
+    RelativeImport { level: usize, module: Option<String>, names: Vec<String> },
     /// `require_relative "./foo"` (Ruby)
     RequireRelative,
     /// `autoload :Foo, "path"` (Ruby)
     Autoload { constant: String },
+    /// Ruby constant reference resolved via Zeitwerk convention (CamelCase → snake_case)
+    ZeitwerkConstant,
 }
 
 enum ImportConfidence {
@@ -200,7 +211,6 @@ use petgraph::graph::DiGraph;
 type DepGraph = DiGraph<GraphNode, GraphEdge>;
 
 struct GraphNode {
-    id: NodeId,
     kind: NodeKind,
     /// Canonical path relative to project root
     path: PathBuf,
@@ -208,18 +218,24 @@ struct GraphNode {
     name: String,
     /// Line span — populated for Function nodes (future)
     span: Option<(usize, usize)>,
+    /// Language of the source file this node came from
+    language: Option<Language>,
 }
 
 #[derive(Clone, Copy)]
 enum NodeKind {
     Module,   // v1
     Function, // future
+    Service,  // cross-service boundary node
+    Endpoint, // API endpoint node
 }
 
 struct GraphEdge {
+    /// The kind of dependency this edge represents
+    kind: EdgeKind,
     /// All import statements that contributed to this edge
     source_locations: Vec<SourceLocation>,
-    /// Number of distinct import statements (edge weight for entropy)
+    /// Edge weight (binary in v1)
     weight: usize,
 }
 
@@ -228,21 +244,26 @@ struct SourceLocation {
     line: usize,
     column: Option<usize>,
 }
+
+enum EdgeKind {
+    Import,
+    GraphqlQuery,
+    RestCall,
+}
 ```
 
 ### Metrics Output
 
 ```rust
-struct AnalysisResult {
+struct AnalyzeOutput {
     metadata: Metadata,
     summary: Summary,
-    hotspots: Vec<NodeMetrics>,
+    hotspots: Vec<Hotspot>,
     sccs: Vec<SccInfo>,
-    diagnostics: Vec<Diagnostic>,
-    timing: Timing,
+    insights: Option<Vec<Insight>>,
 }
 
-struct NodeMetrics {
+struct Hotspot {
     node: String,
     fanout: usize,
     fanin: usize,
@@ -257,19 +278,13 @@ struct DiffResult {
     head_ref: String,
     verdict: Verdict,
     reasons: Vec<String>,
+    elapsed_ms: u64,
+    modules_per_second: f64,
     summary_delta: SummaryDelta,
     new_edges: Vec<EdgeDetail>,
     removed_edges: Vec<EdgeDetail>,
     fanout_changes: Vec<FanoutChange>,
     scc_changes: SccChanges,
-    timing: Timing,
-}
-
-struct Timing {
-    /// Wall-clock time in milliseconds
-    elapsed_ms: u64,
-    /// node_count / (elapsed_ms / 1000)
-    modules_per_second: f64,
 }
 
 enum Verdict {
@@ -289,13 +304,8 @@ trait ParseFrontend {
     /// Return the tree-sitter Language for this frontend
     fn language(&self) -> tree_sitter::Language;
 
-    /// Extract raw imports from a single file's CST
-    fn extract_imports(
-        &self,
-        tree: &tree_sitter::Tree,
-        source: &[u8],
-        file_path: &Path,
-    ) -> Vec<RawImport>;
+    /// Extract raw imports from a single file's source bytes
+    fn extract_imports(&self, source: &[u8], file_path: &Path) -> Vec<RawImport>;
 
     /// Resolve a raw import path to a canonical project-internal node path.
     /// Returns None if the import is external/unresolvable.
@@ -303,7 +313,7 @@ trait ParseFrontend {
         &self,
         raw: &RawImport,
         project_root: &Path,
-        config: &LanguageConfig,
+        project_files: &[PathBuf],
     ) -> Option<PathBuf>;
 }
 ```
@@ -354,6 +364,13 @@ Each language uses an S-expression query compiled once at startup.
   (#eq? @method "autoload"))
 ```
 
+**Rust:**
+```scheme
+;; Matches: use crate::foo::bar;
+(use_declaration
+  argument: (_) @arg)
+```
+
 ### Resolution Logic
 
 Each resolver takes a `RawImport` and maps it to a canonical `PathBuf` within the project:
@@ -374,6 +391,12 @@ Each resolver takes a `RawImport` and maps it to a canonical `PathBuf` within th
 2. `require`: try each configured `load_path` entry, look for `{path}.rb` or `{path}/init.rb`
 3. Zeitwerk mode: convert `CamelCase` constant references to `snake_case` paths
 4. If no match in project, classify as `External`
+
+**Rust resolver:**
+1. Treat `crate::`, `self::`, and `super::` imports as internal
+2. Treat `std`, `core`, and `alloc` as external
+3. If the first segment matches the crate name from `Cargo.toml`, treat as internal
+4. Otherwise, classify as `External`
 
 ---
 
@@ -425,6 +448,19 @@ DepGraph (petgraph::DiGraph)
    - enlarged_sccs = matched SCCs where |head| > |base|
 7. Compute per-node metric deltas for changed nodes
 8. Apply --fail-on policy → Verdict
+```
+
+### Service-graph Algorithm
+
+```
+1. Read [services] from .untangle.toml
+2. For each service:
+   - Parse GraphQL schemas (graphql-parser)
+   - Parse OpenAPI specs (serde_yaml)
+   - Collect source files under service root
+3. Scan source files for GraphQL and REST client usage
+4. Match usages to known schemas/specs to produce cross-service edges
+5. Emit JSON/text/DOT service-graph output
 ```
 
 ### Entropy Computation
@@ -606,7 +642,7 @@ fn analyze_returns_two_on_empty_project() {
         .unwrap()
         .args(["analyze", "tests/fixtures/empty/", "--lang", "python"])
         .assert()
-        .code(2)
+        .code(1)
         .stderr(predicate::str::contains("No parseable files"));
 }
 
@@ -849,11 +885,11 @@ fn generate_synthetic_graph(nodes: usize, edges: usize) -> DepGraph {
     let mut graph = DiGraph::new();
     let node_indices: Vec<_> = (0..nodes)
         .map(|i| graph.add_node(GraphNode {
-            id: NodeId(i),
             kind: NodeKind::Module,
             path: PathBuf::from(format!("mod_{i}.py")),
             name: format!("mod_{i}"),
             span: None,
+            language: None,
         }))
         .collect();
     for _ in 0..edges {
@@ -931,7 +967,6 @@ jobs:
 
       - name: Self-analyze
         run: ./target/release/untangle analyze src/ --lang rust --format json
-        # Future: once Rust support is added, dogfood on own codebase
 ```
 
 ---
@@ -962,7 +997,7 @@ Use `cross` for cross-compilation or `cargo-zigbuild` for musl targets.
 
 ### Binary size concerns
 
-Tree-sitter grammars are compiled into the binary. Each grammar adds ~200KB–1MB. Three grammars ≈ 1–3MB overhead. Total binary target: <15MB stripped.
+Tree-sitter grammars are compiled into the binary. Each grammar adds ~200KB–1MB. Four grammars ≈ 1–4MB overhead. Total binary target: <15MB stripped.
 
 ```toml
 # Cargo.toml profile
@@ -979,7 +1014,7 @@ codegen-units = 1   # single codegen unit for better optimisation
 
 ### Phase 1: Foundation (week 1)
 
-1. Scaffold project with `clap` CLI skeleton (all three subcommands, no implementation)
+1. Scaffold project with `clap` CLI skeleton (analyze, diff, graph, config, service-graph)
 2. Implement `GraphNode`, `GraphEdge`, `DepGraph` IR with petgraph
 3. Implement Go parser frontend (cleanest import model, fastest to validate)
 4. Implement `analyze` command with JSON output for Go
@@ -990,8 +1025,9 @@ codegen-units = 1   # single codegen unit for better optimisation
 6. Implement fan-out, fan-in, entropy, SCC computation
 7. Implement Python parser frontend (relative imports, `__init__.py` handling)
 8. Implement Ruby parser frontend (`require`, `require_relative`, basic Zeitwerk)
-9. Add text and DOT output formatters
-10. Property-based tests for metric invariants
+9. Implement Rust parser frontend (`use` statements, `Cargo.toml`)
+10. Add text and DOT output formatters
+11. Property-based tests for metric invariants
 
 ### Phase 3: Diff & CI (week 3)
 
@@ -1007,9 +1043,10 @@ codegen-units = 1   # single codegen unit for better optimisation
 17. Auto language detection
 18. `--include` / `--exclude` glob support
 19. Progress indicators (`indicatif`)
-20. `cargo-mutants` pass, coverage enforcement
-21. Benchmarks, performance tuning
-22. Cross-platform release builds
+20. Service-graph analysis (GraphQL/OpenAPI)
+21. `cargo-mutants` pass, coverage enforcement
+22. Benchmarks, performance tuning
+23. Cross-platform release builds
 
 ---
 

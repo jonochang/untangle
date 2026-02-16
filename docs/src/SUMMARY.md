@@ -1,6 +1,7 @@
 # Summary
 
 [Introduction](./introduction.md)
+[Why Untangle](./why.md)
 [Installation](./installation.md)
 [Quick Start](./quickstart.md)
 
@@ -13,6 +14,7 @@
   - [diff](./commands/diff.md)
   - [graph](./commands/graph.md)
   - [config](./commands/config.md)
+  - [service-graph](./commands/service-graph.md)
 
 # Output Formats
 

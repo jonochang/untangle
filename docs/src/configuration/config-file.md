@@ -83,6 +83,16 @@ enabled = false           # Disable analysis for vendor files
 [overrides."src/legacy/**"]
 rules.high_fanout.min_fanout = 40
 rules.high_fanout.relative_to_p90 = false
+
+# ============================================================
+# [services] — Cross-service dependency tracking
+# ============================================================
+[services."billing"]
+root = "services/billing"
+lang = "python"
+graphql_schemas = ["services/billing/schema.graphql"]
+openapi_specs = ["services/billing/openapi.yaml"]
+base_urls = ["https://billing.internal"]
 ```
 
 ## Section Details
@@ -122,6 +132,29 @@ See [Insights](../insights/README.md) for detailed documentation of each rule.
 ### `[overrides]`
 
 See [Per-Path Overrides](./overrides.md).
+
+### `[services]`
+
+Used by `untangle service-graph` to map service boundaries and API contracts.
+
+Each entry is keyed by service name:
+
+```toml
+[services."billing"]
+root = "services/billing"
+lang = "python" # optional
+graphql_schemas = ["services/billing/schema.graphql"]
+openapi_specs = ["services/billing/openapi.yaml"]
+base_urls = ["https://billing.internal"]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `root` | string | Service root directory (relative to project root) |
+| `lang` | string | Optional language override (`python`, `ruby`, `go`, `rust`) |
+| `graphql_schemas` | string array | GraphQL schema file paths |
+| `openapi_specs` | string array | OpenAPI spec file paths |
+| `base_urls` | string array | Base URLs used to match REST client calls |
 
 ## Backward Compatibility
 
