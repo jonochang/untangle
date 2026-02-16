@@ -23,7 +23,10 @@ pub fn create_frontend(
             Box::new(fe.with_exclude_stdlib(config.go.exclude_stdlib))
         }
         Language::Python => Box::new(PythonFrontend::new()),
-        Language::Ruby => Box::new(RubyFrontend::with_load_paths(config.ruby_load_paths())),
+        Language::Ruby => Box::new(
+            RubyFrontend::with_load_paths(config.ruby_load_paths())
+                .with_zeitwerk(config.ruby.zeitwerk),
+        ),
         Language::Rust => Box::new(match rust_crate_name {
             Some(name) => RustFrontend::with_crate_name(name.clone()),
             None => RustFrontend::new(),

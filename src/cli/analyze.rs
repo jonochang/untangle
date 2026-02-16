@@ -91,6 +91,7 @@ struct FileParseResult {
     source_module: PathBuf,
     imports: Vec<RawImport>,
     language: Language,
+    original_file: PathBuf,
 }
 
 pub fn run(args: &AnalyzeArgs) -> Result<()> {
@@ -159,12 +160,20 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         return Err(UntangleError::NoFiles { path: root });
     }
 
-    // Read go.mod for Go projects (needed by all parser instances)
-    let go_module_path = if langs.contains(&Language::Go) {
-        GoFrontend::read_go_mod(&root)
+    // Discover all go.mod files for Go projects (supports nested modules)
+    let go_modules = if langs.contains(&Language::Go) {
+        walk::discover_go_modules(&root)
     } else {
-        None
+        HashMap::new()
     };
+    // Backward compat: root-level module path for single-module projects
+    let go_module_path = go_modules.get(&root).cloned().or_else(|| {
+        if langs.contains(&Language::Go) {
+            GoFrontend::read_go_mod(&root)
+        } else {
+            None
+        }
+    });
 
     // Read Cargo.toml for Rust projects
     let rust_crate_name = if langs.contains(&Language::Rust) {
@@ -208,9 +217,18 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 }
             };
 
+            // For Go files, use the nearest go.mod module path if available
+            let file_go_module = if *lang == Language::Go {
+                walk::find_go_module_root(file_path, &go_modules)
+                    .map(|(_, mp)| mp.to_string())
+                    .or_else(|| go_module_path.clone())
+            } else {
+                go_module_path.clone()
+            };
+
             // Each thread creates its own frontend (which creates its own Parser)
             let frontend: Box<dyn ParseFrontend> =
-                factory::create_frontend(*lang, &config, &go_module_path, &rust_crate_name);
+                factory::create_frontend(*lang, &config, &file_go_module, &rust_crate_name);
 
             let imports = frontend.extract_imports(&source, file_path);
             let source_module = factory::source_module_path(file_path, &root, *lang);
@@ -223,6 +241,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                 source_module,
                 imports,
                 language: *lang,
+                original_file: file_path.clone(),
             })
         })
         .collect();
@@ -236,17 +255,48 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
 
     // Sequential graph building (not parallelizable due to shared mutable state)
     let mut builder = GraphBuilder::new();
-    let mut unresolved_imports = 0usize;
+    let mut resolution_counts: HashMap<Language, (usize, usize)> = HashMap::new(); // (resolved, unresolved)
 
-    // Create resolvers per language
+    // Create resolvers per language (non-Go)
     let resolvers: HashMap<Language, Box<dyn ParseFrontend>> = langs
         .iter()
+        .filter(|&&lang| lang != Language::Go)
         .map(|&lang| {
             let frontend =
                 factory::create_frontend(lang, &config, &go_module_path, &rust_crate_name);
             (lang, frontend)
         })
         .collect();
+
+    // Create per-module Go resolvers
+    let go_resolvers: HashMap<PathBuf, Box<dyn ParseFrontend>> = go_modules
+        .iter()
+        .map(|(mod_root, mod_path)| {
+            let fe = GoFrontend::with_module_path(mod_path.clone())
+                .with_exclude_stdlib(config.go.exclude_stdlib);
+            (mod_root.clone(), Box::new(fe) as Box<dyn ParseFrontend>)
+        })
+        .collect();
+
+    // Fallback Go resolver (no go.mod or root-level only)
+    let fallback_go_resolver: Box<dyn ParseFrontend> =
+        factory::create_frontend(Language::Go, &config, &go_module_path, &rust_crate_name);
+
+    // Partition Go files by module root for correct resolution scope
+    let go_files_by_module: HashMap<PathBuf, Vec<PathBuf>> = if langs.contains(&Language::Go) {
+        let mut by_module: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        if let Some(go_files) = files_by_lang.get(&Language::Go) {
+            for f in go_files {
+                let mod_root = walk::find_go_module_root(f, &go_modules)
+                    .map(|(r, _)| r.to_path_buf())
+                    .unwrap_or_else(|| root.clone());
+                by_module.entry(mod_root).or_default().push(f.clone());
+            }
+        }
+        by_module
+    } else {
+        HashMap::new()
+    };
 
     // Build per-language file lists for resolution
     let files_by_lang_for_resolve: HashMap<Language, Vec<PathBuf>> = files_by_lang
@@ -255,26 +305,47 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         .collect();
 
     for result in &parse_results {
-        let resolver = match resolvers.get(&result.language) {
-            Some(r) => r,
-            None => continue,
-        };
-        let lang_files = files_by_lang_for_resolve
-            .get(&result.language)
-            .map(|v| v.as_slice())
-            .unwrap_or(&[]);
+        // For Go files, use per-module resolver and file list
+        let (resolver, lang_files): (&dyn ParseFrontend, Vec<PathBuf>) =
+            if result.language == Language::Go {
+                let mod_root = walk::find_go_module_root(&result.original_file, &go_modules)
+                    .map(|(r, _)| r.to_path_buf())
+                    .unwrap_or_else(|| root.clone());
+                let resolver = go_resolvers
+                    .get(&mod_root)
+                    .map(|r| r.as_ref())
+                    .unwrap_or(fallback_go_resolver.as_ref());
+                let files = go_files_by_module
+                    .get(&mod_root)
+                    .cloned()
+                    .unwrap_or_default();
+                (resolver, files)
+            } else {
+                let resolver = match resolvers.get(&result.language) {
+                    Some(r) => r.as_ref(),
+                    None => continue,
+                };
+                let files = files_by_lang_for_resolve
+                    .get(&result.language)
+                    .cloned()
+                    .unwrap_or_default();
+                (resolver, files)
+            };
+
+        let counts = resolution_counts.entry(result.language).or_insert((0, 0));
 
         for raw in &result.imports {
             if raw.confidence == ImportConfidence::External
                 || raw.confidence == ImportConfidence::Dynamic
                 || raw.confidence == ImportConfidence::Unresolvable
             {
-                unresolved_imports += 1;
+                counts.1 += 1;
                 continue;
             }
 
-            match resolver.resolve(raw, &root, lang_files) {
+            match resolver.resolve(raw, &root, &lang_files) {
                 Some(target_module) => {
+                    counts.0 += 1;
                     builder.add_import(&ResolvedImport {
                         source_module: result.source_module.clone(),
                         target_module,
@@ -287,11 +358,13 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
                     });
                 }
                 None => {
-                    unresolved_imports += 1;
+                    counts.1 += 1;
                 }
             }
         }
     }
+
+    let unresolved_imports: usize = resolution_counts.values().map(|(_, u)| u).sum();
 
     let graph = builder.build();
     let summary = Summary::from_graph(&graph);
@@ -348,10 +421,16 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         Some(
             langs
                 .iter()
-                .map(|&lang| LanguageStats {
-                    language: lang.to_string(),
-                    files_parsed: per_lang_files_parsed.get(&lang).copied().unwrap_or(0),
-                    nodes: nodes_per_lang.get(&lang).copied().unwrap_or(0),
+                .map(|&lang| {
+                    let (resolved, unresolved) =
+                        resolution_counts.get(&lang).copied().unwrap_or((0, 0));
+                    LanguageStats {
+                        language: lang.to_string(),
+                        files_parsed: per_lang_files_parsed.get(&lang).copied().unwrap_or(0),
+                        nodes: nodes_per_lang.get(&lang).copied().unwrap_or(0),
+                        imports_resolved: resolved,
+                        imports_unresolved: unresolved,
+                    }
                 })
                 .collect(),
         )

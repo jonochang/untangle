@@ -349,6 +349,49 @@ pub fn discover_files_multi(
     Ok(files_by_lang)
 }
 
+/// Find all go.mod files under `root`, return map of directory → module path.
+pub fn discover_go_modules(root: &Path) -> HashMap<PathBuf, String> {
+    let mut modules = HashMap::new();
+    let walker = WalkBuilder::new(root)
+        .hidden(false)
+        .git_ignore(true)
+        .build();
+
+    for entry in walker.flatten() {
+        let path = entry.path();
+        if path.is_file() && path.file_name().and_then(|n| n.to_str()) == Some("go.mod") {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                if let Some(module_path) = crate::parse::go::parse_go_mod_module(&content) {
+                    if let Some(dir) = path.parent() {
+                        modules.insert(dir.to_path_buf(), module_path);
+                    }
+                }
+            }
+        }
+    }
+
+    modules
+}
+
+/// Find the nearest ancestor go.mod for a given file path.
+/// Returns the module root directory and module path string.
+pub fn find_go_module_root<'a>(
+    file_path: &'a Path,
+    module_roots: &'a HashMap<PathBuf, String>,
+) -> Option<(&'a Path, &'a str)> {
+    let mut dir = file_path.parent()?;
+    loop {
+        if let Some(module_path) = module_roots.get(dir) {
+            return Some((dir, module_path.as_str()));
+        }
+        match dir.parent() {
+            Some(parent) if parent != dir => dir = parent,
+            _ => break,
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,6 +435,54 @@ mod tests {
             "Should detect Python files"
         );
         assert!(langs.contains(&Language::Ruby), "Should detect Ruby files");
+    }
+
+    #[test]
+    fn discover_go_modules_nested() {
+        let root = Path::new("tests/fixtures/go/nested_modules")
+            .canonicalize()
+            .unwrap();
+        let modules = discover_go_modules(&root);
+        assert!(modules.len() >= 2, "Should find at least 2 go.mod files");
+
+        let web_dir = root.join("web/golang");
+        let api_dir = root.join("api");
+        assert_eq!(
+            modules.get(&web_dir),
+            Some(&"github.com/example/web".to_string())
+        );
+        assert_eq!(
+            modules.get(&api_dir),
+            Some(&"github.com/example/api".to_string())
+        );
+    }
+
+    #[test]
+    fn find_go_module_root_maps_files() {
+        let mut modules = HashMap::new();
+        modules.insert(
+            PathBuf::from("/project/web/golang"),
+            "github.com/example/web".to_string(),
+        );
+        modules.insert(
+            PathBuf::from("/project/api"),
+            "github.com/example/api".to_string(),
+        );
+
+        let result = find_go_module_root(Path::new("/project/web/golang/main.go"), &modules);
+        assert_eq!(result.map(|(_, mp)| mp), Some("github.com/example/web"));
+
+        let result = find_go_module_root(
+            Path::new("/project/web/golang/pkg/handler/handler.go"),
+            &modules,
+        );
+        assert_eq!(result.map(|(_, mp)| mp), Some("github.com/example/web"));
+
+        let result = find_go_module_root(Path::new("/project/api/main.go"), &modules);
+        assert_eq!(result.map(|(_, mp)| mp), Some("github.com/example/api"));
+
+        let result = find_go_module_root(Path::new("/project/other/main.go"), &modules);
+        assert!(result.is_none());
     }
 
     #[test]

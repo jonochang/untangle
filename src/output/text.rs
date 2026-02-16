@@ -25,8 +25,12 @@ pub fn write_analyze_text<W: Write>(
         for ls in lang_stats {
             writeln!(
                 writer,
-                "  - {} ({} files, {} nodes)",
-                ls.language, ls.files_parsed, ls.nodes
+                "  - {} ({} files, {} nodes, {}/{} imports resolved)",
+                ls.language,
+                ls.files_parsed,
+                ls.nodes,
+                ls.imports_resolved,
+                ls.imports_resolved + ls.imports_unresolved
             )?;
         }
     } else {

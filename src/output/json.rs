@@ -44,6 +44,8 @@ pub struct LanguageStats {
     pub language: String,
     pub files_parsed: usize,
     pub nodes: usize,
+    pub imports_resolved: usize,
+    pub imports_unresolved: usize,
 }
 
 #[derive(Debug, Serialize)]

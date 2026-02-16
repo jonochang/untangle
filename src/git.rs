@@ -63,6 +63,42 @@ pub fn list_files_at_ref(
     Ok(files)
 }
 
+/// Find files with a specific name at a git ref, returning (path, content) pairs.
+pub fn find_files_by_name_at_ref(
+    repo: &Repository,
+    reference: &str,
+    filename: &str,
+) -> Result<Vec<(PathBuf, Vec<u8>)>> {
+    let obj = repo
+        .revparse_single(reference)
+        .map_err(|_| UntangleError::BadRef {
+            reference: reference.to_string(),
+        })?;
+    let commit = obj.peel_to_commit().map_err(|_| UntangleError::BadRef {
+        reference: reference.to_string(),
+    })?;
+    let tree = commit.tree()?;
+
+    let mut results = Vec::new();
+    tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
+        if let Some(name) = entry.name() {
+            if name == filename {
+                let path = if dir.is_empty() {
+                    PathBuf::from(name)
+                } else {
+                    PathBuf::from(dir).join(name)
+                };
+                if let Ok(blob) = entry.to_object(repo).and_then(|o| o.peel_to_blob()) {
+                    results.push((path, blob.content().to_vec()));
+                }
+            }
+        }
+        git2::TreeWalkResult::Ok
+    })?;
+
+    Ok(results)
+}
+
 /// Open the git repository at the given path (or walk up to find one).
 pub fn open_repo(path: &Path) -> Result<Repository> {
     Repository::discover(path).map_err(UntangleError::Git)

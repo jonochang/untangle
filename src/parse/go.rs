@@ -3,6 +3,17 @@ use crate::parse::ParseFrontend;
 use std::path::{Path, PathBuf};
 use streaming_iterator::StreamingIterator;
 
+/// Parse the module path from go.mod content string.
+pub fn parse_go_mod_module(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("module ") {
+            return Some(rest.trim().to_string());
+        }
+    }
+    None
+}
+
 pub struct GoFrontend {
     /// Module path from go.mod (e.g., "github.com/user/project")
     module_path: Option<String>,
@@ -36,13 +47,7 @@ impl GoFrontend {
     pub fn read_go_mod(project_root: &Path) -> Option<String> {
         let go_mod_path = project_root.join("go.mod");
         let content = std::fs::read_to_string(go_mod_path).ok()?;
-        for line in content.lines() {
-            let line = line.trim();
-            if let Some(rest) = line.strip_prefix("module ") {
-                return Some(rest.trim().to_string());
-            }
-        }
-        None
+        parse_go_mod_module(&content)
     }
 
     /// Classify an import path as internal, stdlib, or external.
@@ -167,6 +172,21 @@ impl ParseFrontend for GoFrontend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_go_mod_module_extracts_path() {
+        let content = "module github.com/example/web\n\ngo 1.21\n";
+        assert_eq!(
+            parse_go_mod_module(content),
+            Some("github.com/example/web".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_go_mod_module_none_for_empty() {
+        assert_eq!(parse_go_mod_module(""), None);
+        assert_eq!(parse_go_mod_module("go 1.21\n"), None);
+    }
 
     #[test]
     fn extracts_single_import() {

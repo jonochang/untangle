@@ -251,3 +251,90 @@ fn analyze_no_insights_suppresses_key() {
         .success()
         .stdout(predicate::str::contains("\"insights\"").not());
 }
+
+#[test]
+fn analyze_go_nested_modules_resolves_imports() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "tests/fixtures/go/nested_modules",
+            "--lang",
+            "go",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    // Should have resolved edges from both nested modules
+    let edge_count = json["metadata"]["edge_count"].as_u64().unwrap_or(0);
+    assert!(
+        edge_count >= 2,
+        "Expected at least 2 edges from nested module imports, got {edge_count}"
+    );
+}
+
+#[test]
+fn analyze_ruby_zeitwerk_resolves_constants() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "tests/fixtures/ruby/zeitwerk_project",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    // Zeitwerk should resolve Post and User constants from posts_controller.rb
+    let edge_count = json["metadata"]["edge_count"].as_u64().unwrap_or(0);
+    assert!(
+        edge_count >= 1,
+        "Expected at least 1 edge from Zeitwerk constant resolution, got {edge_count}"
+    );
+}
+
+#[test]
+fn analyze_polyglot_json_has_resolution_counts() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "tests/fixtures/polyglot",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let languages = json["metadata"]["languages"].as_array().unwrap();
+    for lang in languages {
+        assert!(
+            lang.get("imports_resolved").is_some(),
+            "Missing imports_resolved for {}",
+            lang["language"]
+        );
+        assert!(
+            lang.get("imports_unresolved").is_some(),
+            "Missing imports_unresolved for {}",
+            lang["language"]
+        );
+    }
+}

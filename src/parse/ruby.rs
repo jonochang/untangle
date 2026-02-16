@@ -2,19 +2,91 @@ use crate::parse::common::{ImportConfidence, ImportKind, RawImport};
 use crate::parse::ParseFrontend;
 use std::path::{Path, PathBuf};
 
+/// Ruby stdlib/builtin constants to exclude from Zeitwerk resolution.
+const RUBY_STDLIB_CONSTANTS: &[&str] = &[
+    "String",
+    "Integer",
+    "Float",
+    "Array",
+    "Hash",
+    "Symbol",
+    "NilClass",
+    "TrueClass",
+    "FalseClass",
+    "Object",
+    "Class",
+    "Module",
+    "Kernel",
+    "IO",
+    "File",
+    "Dir",
+    "Regexp",
+    "Range",
+    "Proc",
+    "Thread",
+    "Mutex",
+    "Fiber",
+    "Exception",
+    "StandardError",
+    "RuntimeError",
+    "ArgumentError",
+    "TypeError",
+    "Struct",
+    "Set",
+    "Numeric",
+    "Time",
+    "Encoding",
+    "Enumerator",
+    "OpenStruct",
+    "Comparable",
+    "Enumerable",
+    "Marshal",
+    "Errno",
+    "Signal",
+    "Process",
+    "GC",
+    "ObjectSpace",
+    "BasicObject",
+    "Method",
+    "UnboundMethod",
+    "Binding",
+    "Math",
+    "Complex",
+    "Rational",
+    "ENV",
+    "STDIN",
+    "STDOUT",
+    "STDERR",
+    "ARGV",
+    "DATA",
+    "TRUE",
+    "FALSE",
+    "NIL",
+];
+
 pub struct RubyFrontend {
     load_paths: Vec<PathBuf>,
+    zeitwerk: bool,
 }
 
 impl RubyFrontend {
     pub fn new() -> Self {
         Self {
             load_paths: vec![PathBuf::from("lib"), PathBuf::from("app")],
+            zeitwerk: false,
         }
     }
 
     pub fn with_load_paths(load_paths: Vec<PathBuf>) -> Self {
-        Self { load_paths }
+        Self {
+            load_paths,
+            zeitwerk: false,
+        }
+    }
+
+    pub fn with_zeitwerk(mut self, zeitwerk: bool) -> Self {
+        self.zeitwerk = zeitwerk;
+        self
     }
 }
 
@@ -44,6 +116,11 @@ impl ParseFrontend for RubyFrontend {
 
         // Walk the tree looking for method calls to require/require_relative/autoload
         Self::walk_for_requires(tree.root_node(), source, file_path, &mut imports);
+
+        // Extract Zeitwerk constants if enabled
+        if self.zeitwerk {
+            Self::extract_zeitwerk_constants(tree.root_node(), source, file_path, &mut imports);
+        }
 
         imports
     }
@@ -111,6 +188,25 @@ impl ParseFrontend for RubyFrontend {
                         .any(|f| f.strip_prefix(project_root).unwrap_or(f).eq(&full))
                     {
                         return Some(full);
+                    }
+                }
+                None
+            }
+            ImportKind::ZeitwerkConstant => {
+                // Admin::User → admin/user
+                let parts: Vec<String> = raw
+                    .raw_path
+                    .split("::")
+                    .map(crate::parse::resolver::camel_to_snake)
+                    .collect();
+                let relative = parts.join("/");
+                for load_path in &self.load_paths {
+                    let target = load_path.join(&relative).with_extension("rb");
+                    if project_files
+                        .iter()
+                        .any(|f| f.strip_prefix(project_root).unwrap_or(f).eq(&target))
+                    {
+                        return Some(target);
                     }
                 }
                 None
@@ -209,6 +305,103 @@ impl RubyFrontend {
         }
     }
 
+    /// Extract Zeitwerk-style constant references from the AST.
+    /// Walks for `constant` and `scope_resolution` nodes, skipping class/module
+    /// definitions and stdlib constants.
+    fn extract_zeitwerk_constants(
+        node: tree_sitter::Node,
+        source: &[u8],
+        file_path: &Path,
+        imports: &mut Vec<RawImport>,
+    ) {
+        // Collect all constant references, excluding definitions
+        let mut seen = std::collections::HashSet::new();
+        Self::walk_for_constants(node, source, file_path, imports, &mut seen);
+    }
+
+    /// Check if a node is the "name" field of a class or module definition.
+    fn is_class_or_module_name(node: tree_sitter::Node) -> bool {
+        if let Some(parent) = node.parent() {
+            let pk = parent.kind();
+            if pk == "class" || pk == "module" {
+                // Check if this node is the "name" field of the parent
+                if let Some(name_node) = parent.child_by_field_name("name") {
+                    return name_node.id() == node.id();
+                }
+            }
+        }
+        false
+    }
+
+    fn walk_for_constants(
+        node: tree_sitter::Node,
+        source: &[u8],
+        file_path: &Path,
+        imports: &mut Vec<RawImport>,
+        seen: &mut std::collections::HashSet<String>,
+    ) {
+        let kind = node.kind();
+
+        if kind == "scope_resolution" {
+            // Skip if this is a class/module definition name
+            if Self::is_class_or_module_name(node) {
+                return;
+            }
+            // Full scoped constant like Admin::User
+            let text = node.utf8_text(source).unwrap_or_default().to_string();
+            if !text.is_empty() && !Self::is_stdlib_constant(&text) && seen.insert(text.clone()) {
+                imports.push(RawImport {
+                    raw_path: text,
+                    source_file: file_path.to_path_buf(),
+                    line: node.start_position().row + 1,
+                    column: Some(node.start_position().column),
+                    kind: ImportKind::ZeitwerkConstant,
+                    confidence: ImportConfidence::Resolved,
+                });
+            }
+            return; // Don't recurse into children of scope_resolution
+        }
+
+        if kind == "constant" {
+            // Skip if this is a class/module definition name
+            if Self::is_class_or_module_name(node) {
+                return;
+            }
+            let text = node.utf8_text(source).unwrap_or_default().to_string();
+            // Skip if parent is a scope_resolution (handled above)
+            let parent_is_scope = node
+                .parent()
+                .map(|p| p.kind() == "scope_resolution")
+                .unwrap_or(false);
+            if !parent_is_scope
+                && !text.is_empty()
+                && !Self::is_stdlib_constant(&text)
+                && seen.insert(text.clone())
+            {
+                imports.push(RawImport {
+                    raw_path: text,
+                    source_file: file_path.to_path_buf(),
+                    line: node.start_position().row + 1,
+                    column: Some(node.start_position().column),
+                    kind: ImportKind::ZeitwerkConstant,
+                    confidence: ImportConfidence::Resolved,
+                });
+            }
+            return;
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            Self::walk_for_constants(child, source, file_path, imports, seen);
+        }
+    }
+
+    fn is_stdlib_constant(name: &str) -> bool {
+        // Check the first (or only) segment
+        let first_segment = name.split("::").next().unwrap_or(name);
+        RUBY_STDLIB_CONSTANTS.contains(&first_segment)
+    }
+
     fn extract_string_content(string_node: tree_sitter::Node, source: &[u8]) -> Option<String> {
         let mut cursor = string_node.walk();
         for child in string_node.children(&mut cursor) {
@@ -270,6 +463,158 @@ mod tests {
             imports[0].kind,
             ImportKind::Autoload { ref constant } if constant == "Foo"
         ));
+    }
+
+    #[test]
+    fn zeitwerk_extracts_constants() {
+        let source = br#"
+class PostsController
+  def index
+    @posts = Post.all
+  end
+
+  def show
+    @user = User.find(1)
+  end
+end
+"#;
+        let frontend = RubyFrontend::new().with_zeitwerk(true);
+        let imports =
+            frontend.extract_imports(source, Path::new("app/controllers/posts_controller.rb"));
+        let zeitwerk_imports: Vec<_> = imports
+            .iter()
+            .filter(|i| matches!(i.kind, ImportKind::ZeitwerkConstant))
+            .collect();
+        assert!(
+            zeitwerk_imports.iter().any(|i| i.raw_path == "Post"),
+            "Should extract Post constant"
+        );
+        assert!(
+            zeitwerk_imports.iter().any(|i| i.raw_path == "User"),
+            "Should extract User constant"
+        );
+    }
+
+    #[test]
+    fn zeitwerk_excludes_stdlib_constants() {
+        let source = br#"
+class Foo
+  def bar
+    s = String.new
+    a = Array.new
+    h = Hash.new
+    Custom.do_something
+  end
+end
+"#;
+        let frontend = RubyFrontend::new().with_zeitwerk(true);
+        let imports = frontend.extract_imports(source, Path::new("test.rb"));
+        let zeitwerk_imports: Vec<_> = imports
+            .iter()
+            .filter(|i| matches!(i.kind, ImportKind::ZeitwerkConstant))
+            .collect();
+        // Should not contain String, Array, Hash
+        assert!(
+            !zeitwerk_imports.iter().any(|i| i.raw_path == "String"),
+            "Should exclude String"
+        );
+        assert!(
+            !zeitwerk_imports.iter().any(|i| i.raw_path == "Array"),
+            "Should exclude Array"
+        );
+        assert!(
+            !zeitwerk_imports.iter().any(|i| i.raw_path == "Hash"),
+            "Should exclude Hash"
+        );
+        // Should contain Custom
+        assert!(
+            zeitwerk_imports.iter().any(|i| i.raw_path == "Custom"),
+            "Should extract Custom constant"
+        );
+    }
+
+    #[test]
+    fn zeitwerk_disabled_no_constants() {
+        let source = br#"
+class Foo
+  def bar
+    Custom.do_something
+  end
+end
+"#;
+        let frontend = RubyFrontend::new().with_zeitwerk(false);
+        let imports = frontend.extract_imports(source, Path::new("test.rb"));
+        let zeitwerk_imports: Vec<_> = imports
+            .iter()
+            .filter(|i| matches!(i.kind, ImportKind::ZeitwerkConstant))
+            .collect();
+        assert!(
+            zeitwerk_imports.is_empty(),
+            "Should not extract constants when zeitwerk is disabled"
+        );
+    }
+
+    #[test]
+    fn zeitwerk_resolves_simple_constant() {
+        let frontend =
+            RubyFrontend::with_load_paths(vec![PathBuf::from("app/models")]).with_zeitwerk(true);
+        let raw = RawImport {
+            raw_path: "User".into(),
+            source_file: PathBuf::from("app/controllers/posts_controller.rb"),
+            line: 3,
+            column: None,
+            kind: ImportKind::ZeitwerkConstant,
+            confidence: ImportConfidence::Resolved,
+        };
+        let project_files = vec![PathBuf::from("/project/app/models/user.rb")];
+        let resolved = frontend.resolve(&raw, Path::new("/project"), &project_files);
+        assert_eq!(resolved, Some(PathBuf::from("app/models/user.rb")));
+    }
+
+    #[test]
+    fn zeitwerk_resolves_scoped_constant() {
+        let frontend =
+            RubyFrontend::with_load_paths(vec![PathBuf::from("app/models")]).with_zeitwerk(true);
+        let raw = RawImport {
+            raw_path: "Admin::User".into(),
+            source_file: PathBuf::from("app/controllers/admin_controller.rb"),
+            line: 3,
+            column: None,
+            kind: ImportKind::ZeitwerkConstant,
+            confidence: ImportConfidence::Resolved,
+        };
+        let project_files = vec![PathBuf::from("/project/app/models/admin/user.rb")];
+        let resolved = frontend.resolve(&raw, Path::new("/project"), &project_files);
+        assert_eq!(resolved, Some(PathBuf::from("app/models/admin/user.rb")));
+    }
+
+    #[test]
+    fn zeitwerk_skips_class_definition() {
+        let source = br#"
+class PostsController
+  def index
+    Post.all
+  end
+end
+"#;
+        let frontend = RubyFrontend::new().with_zeitwerk(true);
+        let imports = frontend.extract_imports(source, Path::new("test.rb"));
+        let zeitwerk_imports: Vec<_> = imports
+            .iter()
+            .filter(|i| matches!(i.kind, ImportKind::ZeitwerkConstant))
+            .collect();
+        // PostsController should NOT be extracted (it's a definition)
+        assert!(
+            !zeitwerk_imports
+                .iter()
+                .any(|i| i.raw_path == "PostsController"),
+            "Should not extract class definition name"
+        );
+        // Post should be extracted (it's a reference)
+        assert!(
+            zeitwerk_imports.iter().any(|i| i.raw_path == "Post"),
+            "Should extract Post reference"
+        );
     }
 
     #[test]

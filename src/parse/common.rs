@@ -34,6 +34,8 @@ pub enum ImportKind {
     RequireRelative,
     /// `autoload :Foo, "path"` (Ruby)
     Autoload { constant: String },
+    /// Ruby constant reference resolved via Zeitwerk convention (CamelCase → snake_case)
+    ZeitwerkConstant,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

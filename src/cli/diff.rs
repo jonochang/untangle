@@ -152,6 +152,7 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         config.include_tests,
         config.go.exclude_stdlib,
         &config.ruby_load_paths(),
+        config.ruby.zeitwerk,
     )?;
     // Build graph at head ref
     let head_graph = build_graph_at_ref(
@@ -164,6 +165,7 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         config.include_tests,
         config.go.exclude_stdlib,
         &config.ruby_load_paths(),
+        config.ruby.zeitwerk,
     )?;
 
     // Compute diff
@@ -242,6 +244,7 @@ fn build_graph_at_ref(
     include_tests: bool,
     go_exclude_stdlib: bool,
     ruby_load_paths: &[PathBuf],
+    zeitwerk: bool,
 ) -> Result<DepGraph> {
     // Collect all extensions from all languages
     let extensions: Vec<&str> = langs
@@ -303,30 +306,80 @@ fn build_graph_at_ref(
         files_by_lang.entry(lang).or_default().push(f);
     }
 
-    // Create frontends per language
+    // Discover Go modules at this ref
+    let go_module_map: HashMap<PathBuf, String> = if langs.contains(&Language::Go) {
+        let go_mod_files =
+            crate::git::find_files_by_name_at_ref(repo, reference, "go.mod").unwrap_or_default();
+        go_mod_files
+            .into_iter()
+            .filter_map(|(path, content)| {
+                let dir = path.parent()?.to_path_buf();
+                let s = String::from_utf8(content).ok()?;
+                let module_path = crate::parse::go::parse_go_mod_module(&s)?;
+                Some((dir, module_path))
+            })
+            .collect()
+    } else {
+        HashMap::new()
+    };
+
+    // Fallback root-level Go module path
+    let root_go_module = go_module_map
+        .get(Path::new(""))
+        .or_else(|| go_module_map.get(Path::new(".")))
+        .cloned()
+        .or_else(|| {
+            crate::git::read_file_at_ref(repo, reference, Path::new("go.mod"))
+                .ok()
+                .and_then(|content| {
+                    String::from_utf8(content)
+                        .ok()
+                        .and_then(|s| crate::parse::go::parse_go_mod_module(&s))
+                })
+        });
+
+    // Create per-module Go resolvers
+    let go_resolvers: HashMap<PathBuf, Box<dyn ParseFrontend>> = go_module_map
+        .iter()
+        .map(|(mod_root, mod_path)| {
+            let fe = GoFrontend::with_module_path(mod_path.clone())
+                .with_exclude_stdlib(go_exclude_stdlib);
+            (mod_root.clone(), Box::new(fe) as Box<dyn ParseFrontend>)
+        })
+        .collect();
+
+    // Partition Go files by module root
+    let go_files_by_module: HashMap<PathBuf, Vec<PathBuf>> = {
+        let mut by_module: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        if let Some(go_files) = files_by_lang.get(&Language::Go) {
+            for f in go_files {
+                let mod_root = crate::walk::find_go_module_root(f, &go_module_map)
+                    .map(|(r, _)| r.to_path_buf())
+                    .unwrap_or_default();
+                by_module.entry(mod_root).or_default().push(f.clone());
+            }
+        }
+        by_module
+    };
+
+    // Create non-Go frontends
     let mut frontends: HashMap<Language, Box<dyn ParseFrontend>> = HashMap::new();
     for &lang in langs {
+        if lang == Language::Go {
+            // Fallback Go frontend
+            let fe = match &root_go_module {
+                Some(mp) => GoFrontend::with_module_path(mp.clone()),
+                None => GoFrontend::new(),
+            };
+            frontends.insert(lang, Box::new(fe.with_exclude_stdlib(go_exclude_stdlib)));
+            continue;
+        }
         let frontend: Box<dyn ParseFrontend> = match lang {
-            Language::Go => {
-                let go_mod =
-                    crate::git::read_file_at_ref(repo, reference, Path::new("go.mod")).ok();
-                let module_path = go_mod.and_then(|content| {
-                    String::from_utf8(content).ok().and_then(|s| {
-                        s.lines()
-                            .find(|l| l.trim().starts_with("module "))
-                            .map(|l| l.trim().strip_prefix("module ").unwrap().trim().to_string())
-                    })
-                });
-                let fe = match module_path {
-                    Some(mp) => GoFrontend::with_module_path(mp),
-                    None => GoFrontend::new(),
-                };
-                Box::new(fe.with_exclude_stdlib(go_exclude_stdlib))
-            }
             Language::Python => Box::new(crate::parse::python::PythonFrontend::new()),
-            Language::Ruby => Box::new(crate::parse::ruby::RubyFrontend::with_load_paths(
-                ruby_load_paths.to_vec(),
-            )),
+            Language::Ruby => Box::new(
+                crate::parse::ruby::RubyFrontend::with_load_paths(ruby_load_paths.to_vec())
+                    .with_zeitwerk(zeitwerk),
+            ),
             Language::Rust => {
                 let cargo_toml =
                     crate::git::read_file_at_ref(repo, reference, Path::new("Cargo.toml")).ok();
@@ -340,6 +393,7 @@ fn build_graph_at_ref(
                     None => RustFrontend::new(),
                 })
             }
+            Language::Go => unreachable!(),
         };
         frontends.insert(lang, frontend);
     }
@@ -347,16 +401,31 @@ fn build_graph_at_ref(
     let mut builder = GraphBuilder::new();
 
     for (&lang, files) in &files_by_lang {
-        let frontend = match frontends.get(&lang) {
-            Some(f) => f,
-            None => continue,
-        };
-
         for file_path in files {
             let source = match crate::git::read_file_at_ref(repo, reference, file_path) {
                 Ok(s) => s,
                 Err(_) => continue,
             };
+
+            // Get the appropriate frontend and file list for resolution
+            let (frontend, resolve_files): (&dyn ParseFrontend, &[PathBuf]) =
+                if lang == Language::Go {
+                    let mod_root = crate::walk::find_go_module_root(file_path, &go_module_map)
+                        .map(|(r, _)| r.to_path_buf())
+                        .unwrap_or_default();
+                    let resolver = go_resolvers
+                        .get(&mod_root)
+                        .map(|r| r.as_ref())
+                        .unwrap_or_else(|| frontends.get(&Language::Go).unwrap().as_ref());
+                    let mod_files = go_files_by_module
+                        .get(&mod_root)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[]);
+                    (resolver, mod_files)
+                } else {
+                    let frontend = frontends.get(&lang).unwrap().as_ref();
+                    (frontend, files.as_slice())
+                };
 
             let imports = frontend.extract_imports(&source, file_path);
 
@@ -368,7 +437,7 @@ fn build_graph_at_ref(
                     continue;
                 }
 
-                if let Some(target) = frontend.resolve(raw, root, files) {
+                if let Some(target) = frontend.resolve(raw, root, resolve_files) {
                     let source_module = if lang == Language::Go {
                         file_path.parent().unwrap_or(file_path).to_path_buf()
                     } else {

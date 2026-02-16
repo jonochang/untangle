@@ -1,0 +1,6 @@
+[defaults]
+lang = "ruby"
+
+[ruby]
+zeitwerk = true
+load_path = ["app/models", "app/controllers"]
