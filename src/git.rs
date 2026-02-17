@@ -25,11 +25,11 @@ pub fn read_file_at_ref(repo: &Repository, reference: &str, path: &Path) -> Resu
     Ok(blob.content().to_vec())
 }
 
-/// List all files at a specific git ref, filtered by extensions.
+/// List all files at a specific git ref.
 pub fn list_files_at_ref(
     repo: &Repository,
     reference: &str,
-    extensions: &[&str],
+    _extensions: &[&str],
 ) -> Result<Vec<PathBuf>> {
     let obj = repo
         .revparse_single(reference)
@@ -44,10 +44,8 @@ pub fn list_files_at_ref(
     let mut files = Vec::new();
     tree.walk(git2::TreeWalkMode::PreOrder, |dir, entry| {
         if let Some(name) = entry.name() {
-            if extensions
-                .iter()
-                .any(|ext| name.ends_with(&format!(".{ext}")))
-            {
+            // Include all files for resolution context
+            if entry.kind() == Some(git2::ObjectType::Blob) {
                 let path = if dir.is_empty() {
                     PathBuf::from(name)
                 } else {

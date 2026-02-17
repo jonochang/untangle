@@ -256,21 +256,24 @@ impl ParseFrontend for RustFrontend {
             "super" => {
                 // super::foo -> go up from source file's directory
                 let source_dir = relative_source.parent()?;
-                // If source file is foo/mod.rs, parent is the module dir; go up one more
+                // If source file is foo/mod.rs, its module IS foo/, so super is foo's parent.
+                // If source file is foo.rs, its module is foo (at the same level as foo.rs), so super is foo's parent.
                 let base_dir = if relative_source.file_name()?.to_str()? == "mod.rs" {
                     source_dir.parent()?
                 } else {
-                    source_dir
+                    source_dir.parent()?
                 };
-                let parent_dir = base_dir.parent()?;
                 let rest = path.strip_prefix("super::")?;
                 let module_path = Self::to_file_module_path(rest);
-                let candidate = parent_dir.join(module_path.replace("::", "/"));
+                let candidate = base_dir.join(module_path.replace("::", "/"));
                 Self::find_module_file(&candidate, project_root, project_files)
             }
             "self" => {
                 // self::foo -> same directory as source file
                 let source_dir = relative_source.parent()?;
+                // If mod.rs, self::foo is a child of the current directory.
+                // If foo.rs, self::foo is NOT possible in standard Rust (must be in a module).
+                // But we handle it by looking in the same directory.
                 let rest = path.strip_prefix("self::")?;
                 let module_path = Self::to_file_module_path(rest);
                 let candidate = source_dir.join(module_path.replace("::", "/"));
@@ -329,7 +332,7 @@ impl RustFrontend {
 
             // Strip last component and try again (handles Type names at the end)
             match path.parent() {
-                Some(parent) if parent != path && parent.file_name().is_some() => {
+                Some(parent) if parent != path && parent.file_name().is_some() && parent != Path::new("src") => {
                     path = parent.to_path_buf();
                 }
                 _ => break,
