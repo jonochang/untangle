@@ -12,14 +12,21 @@ pub struct SccInfo {
     pub internal_edges: usize,
 }
 
-/// Compute all non-trivial SCCs (size > 1) in the graph.
+/// Compute all non-trivial SCCs (size > 1 or self-loop) in the graph.
 pub fn find_non_trivial_sccs(graph: &DepGraph) -> Vec<SccInfo> {
     let sccs = tarjan_scc(graph);
     let mut result = Vec::new();
     let mut id = 0;
 
     for scc in sccs {
-        if scc.len() <= 1 {
+        let is_self_loop = scc.len() == 1 && {
+            let node = scc[0];
+            graph
+                .edges_directed(node, petgraph::Direction::Outgoing)
+                .any(|e| e.target() == node)
+        };
+
+        if scc.len() <= 1 && !is_self_loop {
             continue;
         }
 
@@ -57,7 +64,14 @@ pub fn node_scc_map(
     let mut id = 0;
 
     for scc in sccs {
-        if scc.len() <= 1 {
+        let is_self_loop = scc.len() == 1 && {
+            let node = scc[0];
+            graph
+                .edges_directed(node, petgraph::Direction::Outgoing)
+                .any(|e| e.target() == node)
+        };
+
+        if scc.len() <= 1 && !is_self_loop {
             continue;
         }
         for &node in &scc {
