@@ -19,8 +19,13 @@
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "clippy" "rustfmt" "rust-src" ];
         };
+
+        untanglePkg = pkgs.callPackage ./package.nix { };
       in
       {
+        packages.untangle = untanglePkg;
+        packages.default = untanglePkg;
+
         devShells.default = pkgs.mkShell {
           buildInputs = [
             rustToolchain
