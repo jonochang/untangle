@@ -347,11 +347,13 @@ impl RubyFrontend {
             if Self::is_class_or_module_name(node) {
                 return;
             }
-            // Full scoped constant like Admin::User
+            // Full scoped constant like Admin::User or ::User
             let text = node.utf8_text(source).unwrap_or_default().to_string();
-            if !text.is_empty() && !Self::is_stdlib_constant(&text) && seen.insert(text.clone()) {
+            // Handle ::User -> User for resolution (root reference)
+            let raw_path = text.trim_start_matches("::").to_string();
+            if !raw_path.is_empty() && !Self::is_stdlib_constant(&raw_path) && seen.insert(raw_path.clone()) {
                 imports.push(RawImport {
-                    raw_path: text,
+                    raw_path,
                     source_file: file_path.to_path_buf(),
                     line: node.start_position().row + 1,
                     column: Some(node.start_position().column),
@@ -419,7 +421,18 @@ fn normalize_path(path: &Path) -> PathBuf {
     for component in path.components() {
         match component {
             std::path::Component::ParentDir => {
-                components.pop();
+                if let Some(last) = components.last() {
+                    if last == &std::path::Component::ParentDir {
+                        components.push(component);
+                    } else if last == &std::path::Component::CurDir {
+                        components.pop();
+                        components.push(component);
+                    } else {
+                        components.pop();
+                    }
+                } else {
+                    components.push(component);
+                }
             }
             std::path::Component::CurDir => {}
             other => components.push(other),

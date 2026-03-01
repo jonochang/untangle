@@ -123,33 +123,45 @@ impl ParseFrontend for PythonFrontend {
         }
 
         // Query for `from x import y` (absolute)
-        let from_query_str = r#"(import_from_statement module_name: (dotted_name) @module name: (dotted_name) @name)"#;
+        let from_query_str = r#"(import_from_statement module_name: (dotted_name) @module)"#;
         let from_query = tree_sitter::Query::new(&lang, from_query_str)
             .expect("failed to compile Python from-import query");
 
         let mut cursor2 = tree_sitter::QueryCursor::new();
         let mut matches2 = cursor2.matches(&from_query, tree.root_node(), source);
         while let Some(m) = matches2.next() {
-            let module_capture = m.captures.iter().find(|c| c.index == 0);
-            let name_captures: Vec<_> = m.captures.iter().filter(|c| c.index == 1).collect();
-
-            if let Some(module_cap) = module_capture {
-                let module = module_cap
-                    .node
+            for capture in m.captures.iter().filter(|c| c.index == 0) {
+                let module_node = capture.node;
+                let module = module_node
                     .utf8_text(source)
                     .unwrap_or_default()
                     .to_string();
-                let names: Vec<String> = name_captures
-                    .iter()
-                    .map(|c| c.node.utf8_text(source).unwrap_or_default().to_string())
-                    .collect();
 
                 if !module.is_empty() {
+                    let mut names = Vec::new();
+                    // Walk the parent (import_from_statement) to find all imported names
+                    if let Some(parent) = module_node.parent() {
+                        let mut cursor = parent.walk();
+                        for child in parent.children(&mut cursor) {
+                            if child.kind() == "dotted_name" && child.id() != module_node.id() {
+                                if let Ok(name) = child.utf8_text(source) {
+                                    names.push(name.to_string());
+                                }
+                            } else if child.kind() == "aliased_import" {
+                                if let Some(name_node) = child.child_by_field_name("name") {
+                                    if let Ok(name) = name_node.utf8_text(source) {
+                                        names.push(name.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     imports.push(RawImport {
                         raw_path: module.clone(),
                         source_file: file_path.to_path_buf(),
-                        line: module_cap.node.start_position().row + 1,
-                        column: Some(module_cap.node.start_position().column),
+                        line: module_node.start_position().row + 1,
+                        column: Some(module_node.start_position().column),
                         kind: ImportKind::FromImport { module, names },
                         confidence: ImportConfidence::Resolved,
                     });
@@ -191,36 +203,35 @@ impl ParseFrontend for PythonFrontend {
                 None
             }
             ImportKind::RelativeImport { level, module, .. } => {
-                let source_dir = raw.source_file.parent()?;
+                let source_file_relative = raw.source_file.strip_prefix(project_root).unwrap_or(&raw.source_file);
+                let source_dir = source_file_relative.parent()?;
                 let mut base = source_dir.to_path_buf();
+                // level 1 = current dir, level 2 = parent dir, etc.
                 for _ in 1..*level {
-                    base = base.parent()?.to_path_buf();
+                    if let Some(parent) = base.parent() {
+                        base = parent.to_path_buf();
+                    } else {
+                        // Reached root, but still have levels to go
+                        return None;
+                    }
                 }
                 if let Some(mod_name) = module {
                     let mod_path = mod_name.replace('.', "/");
                     base = base.join(mod_path);
                 }
                 let init_path = base.join("__init__.py");
-                let relative_init = init_path
-                    .strip_prefix(project_root)
-                    .unwrap_or(&init_path)
-                    .to_path_buf();
                 if project_files
                     .iter()
-                    .any(|f| f.strip_prefix(project_root).unwrap_or(f) == relative_init)
+                    .any(|f| f.strip_prefix(project_root).unwrap_or(f) == init_path)
                 {
-                    return Some(relative_init);
+                    return Some(init_path);
                 }
                 let py_path = base.with_extension("py");
-                let relative_py = py_path
-                    .strip_prefix(project_root)
-                    .unwrap_or(&py_path)
-                    .to_path_buf();
                 if project_files
                     .iter()
-                    .any(|f| f.strip_prefix(project_root).unwrap_or(f) == relative_py)
+                    .any(|f| f.strip_prefix(project_root).unwrap_or(f) == py_path)
                 {
-                    return Some(relative_py);
+                    return Some(py_path);
                 }
                 None
             }

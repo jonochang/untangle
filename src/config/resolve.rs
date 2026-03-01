@@ -508,6 +508,10 @@ fn apply_env_vars(config: &mut ResolvedConfig, prov: &mut ProvenanceMap) {
         config.quiet = val == "1" || val.eq_ignore_ascii_case("true");
         prov.set("defaults.quiet", Source::EnvVar("UNTANGLE_QUIET".into()));
     }
+    if let Ok(val) = std::env::var("UNTANGLE_NO_INSIGHTS") {
+        config.no_insights = val == "1" || val.eq_ignore_ascii_case("true");
+        prov.set("defaults.no_insights", Source::EnvVar("UNTANGLE_NO_INSIGHTS".into()));
+    }
     if let Ok(val) = std::env::var("UNTANGLE_TOP") {
         if let Ok(n) = val.parse::<usize>() {
             config.top = Some(n);
@@ -523,12 +527,15 @@ fn apply_env_vars(config: &mut ResolvedConfig, prov: &mut ProvenanceMap) {
     }
     if let Ok(val) = std::env::var("UNTANGLE_FAIL_ON") {
         config.fail_on = val.split(',').map(|s| s.trim().to_string()).collect();
+        prov.set("fail_on.conditions", Source::EnvVar("UNTANGLE_FAIL_ON".into()));
     }
     if let Ok(val) = std::env::var("UNTANGLE_INCLUDE") {
         config.include = val.split(',').map(|s| s.trim().to_string()).collect();
+        prov.set("targeting.include", Source::EnvVar("UNTANGLE_INCLUDE".into()));
     }
     if let Ok(val) = std::env::var("UNTANGLE_EXCLUDE") {
         config.exclude = val.split(',').map(|s| s.trim().to_string()).collect();
+        prov.set("targeting.exclude", Source::EnvVar("UNTANGLE_EXCLUDE".into()));
     }
 }
 
@@ -565,24 +572,37 @@ fn apply_cli_overrides(config: &mut ResolvedConfig, cli: &CliOverrides, prov: &m
     }
     if !cli.include.is_empty() {
         config.include = cli.include.clone();
+        prov.set("targeting.include", Source::CliFlag("--include".into()));
     }
     if !cli.exclude.is_empty() {
         config.exclude = cli.exclude.clone();
+        prov.set("targeting.exclude", Source::CliFlag("--exclude".into()));
     }
     if !cli.fail_on.is_empty() {
         config.fail_on = cli.fail_on.clone();
+        prov.set("fail_on.conditions", Source::CliFlag("--fail-on".into()));
     }
     if let Some(threshold_fanout) = cli.threshold_fanout {
         config.rules.high_fanout.min_fanout = threshold_fanout;
+        config.rules.high_fanout.enabled = true;
         prov.set(
             "rules.high_fanout.min_fanout",
+            Source::CliFlag("--threshold-fanout".into()),
+        );
+        prov.set(
+            "rules.high_fanout.enabled",
             Source::CliFlag("--threshold-fanout".into()),
         );
     }
     if let Some(threshold_scc) = cli.threshold_scc {
         config.rules.circular_dependency.warning_min_size = threshold_scc;
+        config.rules.circular_dependency.enabled = true;
         prov.set(
             "rules.circular_dependency.warning_min_size",
+            Source::CliFlag("--threshold-scc".into()),
+        );
+        prov.set(
+            "rules.circular_dependency.enabled",
             Source::CliFlag("--threshold-scc".into()),
         );
     }

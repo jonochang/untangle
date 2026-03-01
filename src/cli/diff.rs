@@ -279,8 +279,8 @@ fn build_graph_at_ref(
 
     // Partition files by language
     let mut files_by_lang: HashMap<Language, Vec<PathBuf>> = HashMap::new();
-    for f in all_files {
-        let lang = match crate::walk::language_for_file(&f) {
+    for f in &all_files {
+        let lang = match crate::walk::language_for_file(f) {
             Some(l) if langs.contains(&l) => l,
             _ => continue,
         };
@@ -292,18 +292,18 @@ fn build_graph_at_ref(
         }
         // Apply exclude patterns
         if let Some(ref set) = exclude_set {
-            if set.is_match(&f) {
+            if set.is_match(f) {
                 continue;
             }
         }
         // Apply include patterns
         if let Some(ref set) = include_set {
-            if !set.is_match(&f) {
+            if !set.is_match(f) {
                 continue;
             }
         }
 
-        files_by_lang.entry(lang).or_default().push(f);
+        files_by_lang.entry(lang).or_default().push(f.clone());
     }
 
     // Discover Go modules at this ref
@@ -347,20 +347,6 @@ fn build_graph_at_ref(
             (mod_root.clone(), Box::new(fe) as Box<dyn ParseFrontend>)
         })
         .collect();
-
-    // Partition Go files by module root
-    let go_files_by_module: HashMap<PathBuf, Vec<PathBuf>> = {
-        let mut by_module: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
-        if let Some(go_files) = files_by_lang.get(&Language::Go) {
-            for f in go_files {
-                let mod_root = crate::walk::find_go_module_root(f, &go_module_map)
-                    .map(|(r, _)| r.to_path_buf())
-                    .unwrap_or_default();
-                by_module.entry(mod_root).or_default().push(f.clone());
-            }
-        }
-        by_module
-    };
 
     // Create non-Go frontends
     let mut frontends: HashMap<Language, Box<dyn ParseFrontend>> = HashMap::new();
@@ -417,14 +403,10 @@ fn build_graph_at_ref(
                         .get(&mod_root)
                         .map(|r| r.as_ref())
                         .unwrap_or_else(|| frontends.get(&Language::Go).unwrap().as_ref());
-                    let mod_files = go_files_by_module
-                        .get(&mod_root)
-                        .map(|v| v.as_slice())
-                        .unwrap_or(&[]);
-                    (resolver, mod_files)
+                    (resolver, all_files.as_slice())
                 } else {
                     let frontend = frontends.get(&lang).unwrap().as_ref();
-                    (frontend, files.as_slice())
+                    (frontend, all_files.as_slice())
                 };
 
             let imports = frontend.extract_imports(&source, file_path);
@@ -439,10 +421,18 @@ fn build_graph_at_ref(
 
                 if let Some(target) = frontend.resolve(raw, root, resolve_files) {
                     let source_module = if lang == Language::Go {
-                        file_path.parent().unwrap_or(file_path).to_path_buf()
+                        let (mod_root, _) = crate::walk::find_go_module_root(file_path, &go_module_map)
+                            .unwrap_or((Path::new(""), ""));
+                        file_path
+                            .parent()
+                            .unwrap_or(file_path)
+                            .strip_prefix(mod_root)
+                            .unwrap_or_else(|_| file_path.parent().unwrap_or(file_path))
+                            .to_path_buf()
                     } else {
                         file_path.clone()
                     };
+
                     builder.add_import(&ResolvedImport {
                         source_module,
                         target_module: target,
