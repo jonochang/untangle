@@ -22,6 +22,9 @@ untangle analyze ./src --lang python
 # Diff against main (the CI use case)
 untangle diff --base origin/main --head HEAD --fail-on fanout-increase,new-scc
 
+# Compute CRAP (complexity + coverage) for functions
+untangle quality ./src --metric crap --coverage lcov.info --lang rust --format text
+
 # Export graph for visualization
 untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
 ```

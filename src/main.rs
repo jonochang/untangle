@@ -9,6 +9,7 @@ mod insights;
 mod metrics;
 mod output;
 mod parse;
+mod quality;
 mod walk;
 
 use clap::Parser;

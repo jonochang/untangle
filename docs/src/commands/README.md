@@ -1,6 +1,6 @@
 # Commands
 
-Untangle provides five subcommands:
+Untangle provides six subcommands:
 
 | Command | Purpose |
 |---------|---------|
@@ -9,5 +9,6 @@ Untangle provides five subcommands:
 | [`graph`](./graph.md) | Export the raw dependency graph (DOT or JSON) |
 | [`config`](./config.md) | Inspect resolved configuration and provenance |
 | [`service-graph`](./service-graph.md) | Analyze cross-service dependencies |
+| [`quality`](./quality.md) | Compute code-quality metrics for functions |
 
 All commands read the [configuration system](../configuration/README.md). `service-graph` specifically uses the `[services]` section and does not apply include/exclude/ignore patterns.

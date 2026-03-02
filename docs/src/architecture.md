@@ -86,6 +86,18 @@ Graph metrics computation:
 | `depth.rs` | `max_depth()`, `avg_depth()` on condensation DAG |
 | `summary.rs` | `Summary` — aggregate statistics (mean, p90, max) |
 
+### `src/quality/`
+
+Function-level code-quality metrics:
+
+| File | Description |
+|------|-------------|
+| `engine.rs` | Orchestrates file discovery and metric execution |
+| `coverage/` | Coverage parsing helpers (LCOV) |
+| `complexity/` | Per-language cyclomatic complexity frontends |
+| `metrics/` | Metric implementations (e.g., CRAP) |
+| `output/` | JSON and text output formatters |
+
 ### `src/output/`
 
 Output formatters:

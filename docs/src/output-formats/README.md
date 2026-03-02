@@ -19,3 +19,4 @@ The default format is `json`, configurable via the [config file](../configuratio
 | `diff` | Default | Summary + changes | - | Falls back to JSON (warning) |
 | `graph` | Nodes + edges | - | Graph visualization | - |
 | `service-graph` | Default | Summary + edges | Graph visualization | - |
+| `quality` | Default | Full report | - | - |

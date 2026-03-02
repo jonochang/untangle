@@ -15,6 +15,7 @@
   - [graph](./commands/graph.md)
   - [config](./commands/config.md)
   - [service-graph](./commands/service-graph.md)
+  - [quality](./commands/quality.md)
 
 # Output Formats
 
