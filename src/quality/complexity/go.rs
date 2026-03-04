@@ -8,10 +8,7 @@ pub struct GoComplexity;
 impl GoComplexity {
     fn cyclomatic_complexity(node: tree_sitter::Node, source: &[u8]) -> usize {
         let decisions = count_decisions(node, source, |n, src| match n.kind() {
-            "if_statement"
-            | "for_statement"
-            | "case_clause"
-            | "type_case_clause"
+            "if_statement" | "for_statement" | "case_clause" | "type_case_clause"
             | "communication_case" => true,
             "binary_expression" => binary_has_ops(n, src, &["&&", "||"]),
             _ => false,
@@ -24,9 +21,7 @@ impl GoComplexity {
         let mut cursor = recv.walk();
         for child in recv.children(&mut cursor) {
             match child.kind() {
-                "type_identifier" => {
-                    return child.utf8_text(source).ok().map(|s| s.to_string())
-                }
+                "type_identifier" => return child.utf8_text(source).ok().map(|s| s.to_string()),
                 "pointer_type" => {
                     if let Some(inner) = child.child(1) {
                         return inner.utf8_text(source).ok().map(|s| s.to_string());

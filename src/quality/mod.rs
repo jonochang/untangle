@@ -1,9 +1,10 @@
-pub mod coverage;
 pub mod complexity;
+pub mod coverage;
 pub mod engine;
 pub mod metrics;
 pub mod output;
 
+use crate::metrics::summary::Summary;
 use crate::walk::Language;
 use serde::Serialize;
 use std::path::PathBuf;
@@ -12,12 +13,14 @@ use std::path::PathBuf;
 #[serde(rename_all = "lowercase")]
 pub enum QualityMetricKind {
     Crap,
+    Overall,
 }
 
 impl std::fmt::Display for QualityMetricKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             QualityMetricKind::Crap => write!(f, "crap"),
+            QualityMetricKind::Overall => write!(f, "overall"),
         }
     }
 }
@@ -28,6 +31,7 @@ impl std::str::FromStr for QualityMetricKind {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "crap" => Ok(QualityMetricKind::Crap),
+            "overall" | "all" => Ok(QualityMetricKind::Overall),
             _ => Err(format!("unknown metric: {s}")),
         }
     }
@@ -73,4 +77,43 @@ pub struct QualityMetadata {
 pub struct QualityReport {
     pub metadata: QualityMetadata,
     pub results: Vec<QualityResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overall: Option<QualityOverallSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct QualityOverallSummary {
+    pub untangle: UntangleMetricSummary,
+    pub crap: CrapMetricSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UntangleMetricSummary {
+    pub nodes: usize,
+    pub edges: usize,
+    pub edge_density: f64,
+    pub files_parsed: usize,
+    pub summary: Summary,
+    pub hotspots: Vec<UntangleHotspot>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CrapMetricSummary {
+    pub functions_reported: usize,
+    pub mean_score: f64,
+    pub p90_score: f64,
+    pub max_score: f64,
+    pub high_risk: usize,
+    pub moderate_risk: usize,
+    pub low_risk: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UntangleHotspot {
+    pub module: String,
+    pub path: PathBuf,
+    pub fanout: usize,
+    pub fanin: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scc: Option<usize>,
 }

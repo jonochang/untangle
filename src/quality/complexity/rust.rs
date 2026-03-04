@@ -18,8 +18,14 @@ impl RustComplexity {
             if p.kind() == "impl_item" {
                 let type_name = p
                     .child_by_field_name("type")
-                    .or_else(|| p.children(&mut p.walk()).find(|c| c.kind() == "type_identifier"))
-                    .or_else(|| p.children(&mut p.walk()).find(|c| c.kind() == "scoped_type_identifier"))
+                    .or_else(|| {
+                        p.children(&mut p.walk())
+                            .find(|c| c.kind() == "type_identifier")
+                    })
+                    .or_else(|| {
+                        p.children(&mut p.walk())
+                            .find(|c| c.kind() == "scoped_type_identifier")
+                    })
                     .and_then(|n| n.utf8_text(source).ok())
                     .unwrap_or("");
                 if !type_name.is_empty() {

@@ -14,8 +14,8 @@ untangle quality <PATH> --metric crap --coverage lcov.info --lang rust
 
 ## Options
 
-- `--metric <NAME>`: metric to compute (`crap`)
-- `--coverage <FILE>`: LCOV coverage file (required for CRAP)
+- `--metric <NAME>`: metric to compute (`crap`, `overall`)
+- `--coverage <FILE>`: LCOV coverage file (required for CRAP and overall)
 - `--lang <LANG>`: limit analysis to a language (`rust`, `go`, `python`, `ruby`)
 - `--format <FMT>`: `json` or `text` (default: config format)
 - `--top <N>`: show only top N results
@@ -26,10 +26,15 @@ untangle quality <PATH> --metric crap --coverage lcov.info --lang rust
 - `--exclude <GLOB>`: exclude glob patterns
 - `--quiet`: suppress progress output
 
-## Example
+## Examples
 
 ```bash
 # Rust project with cargo-llvm-cov
 cargo llvm-cov --lcov --output-path lcov.info
 untangle quality . --metric crap --coverage lcov.info --lang rust --format text
+```
+
+```bash
+# Overall report (Untangle + CRAP)
+untangle quality . --metric overall --coverage lcov.info --lang rust --format text
 ```

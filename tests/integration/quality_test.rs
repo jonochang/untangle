@@ -48,3 +48,27 @@ fn quality_min_cc_filters() {
         .stdout(predicate::str::contains("\"function\": \"foo\""))
         .stdout(predicate::str::contains("\"function\": \"bar\"").not());
 }
+
+#[test]
+fn quality_overall_rust_json() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "quality",
+            "tests/fixtures/quality",
+            "--lang",
+            "rust",
+            "--metric",
+            "overall",
+            "--coverage",
+            "tests/fixtures/quality/lcov.info",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"metric\": \"overall\""))
+        .stdout(predicate::str::contains("\"untangle\""))
+        .stdout(predicate::str::contains("\"crap\""));
+}

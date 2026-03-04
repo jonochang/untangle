@@ -21,11 +21,7 @@ fn matches_binary_op(node: &tree_sitter::Node, source: &[u8], ops: &[&str]) -> b
     ops.iter().any(|op| text.contains(op))
 }
 
-pub fn count_decisions<F>(
-    root: tree_sitter::Node,
-    source: &[u8],
-    mut is_decision: F,
-) -> usize
+pub fn count_decisions<F>(root: tree_sitter::Node, source: &[u8], mut is_decision: F) -> usize
 where
     F: FnMut(&tree_sitter::Node, &[u8]) -> bool,
 {

@@ -43,12 +43,8 @@ pub fn parse_lcov_str(content: &str, project_root: &Path) -> Result<CoverageMap>
                 continue;
             }
             let mut parts = rest.split(',');
-            let line_no = parts
-                .next()
-                .and_then(|p| p.trim().parse::<usize>().ok());
-            let hits = parts
-                .next()
-                .and_then(|p| p.trim().parse::<u64>().ok());
+            let line_no = parts.next().and_then(|p| p.trim().parse::<usize>().ok());
+            let hits = parts.next().and_then(|p| p.trim().parse::<u64>().ok());
             if let (Some(ln), Some(h)) = (line_no, hits) {
                 for file in &current {
                     result.entry(file.clone()).or_default().insert(ln, h);

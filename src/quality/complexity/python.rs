@@ -36,7 +36,13 @@ impl PythonComplexity {
                 class_stack.push(name.to_string());
                 let mut cursor = node.walk();
                 for child in node.children(&mut cursor) {
-                    Self::extract_functions_with_context(child, source, file_path, class_stack, out);
+                    Self::extract_functions_with_context(
+                        child,
+                        source,
+                        file_path,
+                        class_stack,
+                        out,
+                    );
                 }
                 class_stack.pop();
                 return;
@@ -92,7 +98,13 @@ impl ComplexityFrontend for PythonComplexity {
 
         let mut out = Vec::new();
         let mut stack = Vec::new();
-        Self::extract_functions_with_context(tree.root_node(), source, file_path, &mut stack, &mut out);
+        Self::extract_functions_with_context(
+            tree.root_node(),
+            source,
+            file_path,
+            &mut stack,
+            &mut out,
+        );
         out
     }
 }

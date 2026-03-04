@@ -1,7 +1,7 @@
 use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::errors::{Result, UntangleError};
 use crate::output::OutputFormat;
-use crate::quality::engine::{self, QualityRunConfig};
+use crate::quality::engine::{self, OverallRunConfig, QualityRunConfig};
 use crate::quality::output::{json::write_quality_json, text::write_quality_text};
 use crate::quality::QualityMetricKind;
 use crate::walk::Language;
@@ -97,20 +97,33 @@ pub fn run(args: &QualityArgs) -> Result<()> {
         ));
     }
 
-    let report = engine::run(QualityRunConfig {
-        root,
-        lang: args.lang,
-        metric: args.metric,
-        coverage_file: args.coverage.clone(),
-        top: args.top,
-        min_cc: args.min_cc,
-        min_score: args.min_score,
-        include_tests: resolved.include_tests,
-        include: resolved.include,
-        exclude: resolved.exclude,
-        ignore_patterns: resolved.ignore_patterns,
-        quiet: args.quiet,
-    })?;
+    let report = if args.metric == QualityMetricKind::Overall {
+        engine::run_overall(OverallRunConfig {
+            root,
+            lang: args.lang,
+            coverage_file: args.coverage.clone(),
+            top: args.top,
+            min_cc: args.min_cc,
+            min_score: args.min_score,
+            quiet: args.quiet,
+            resolved,
+        })?
+    } else {
+        engine::run(QualityRunConfig {
+            root,
+            lang: args.lang,
+            metric: args.metric,
+            coverage_file: args.coverage.clone(),
+            top: args.top,
+            min_cc: args.min_cc,
+            min_score: args.min_score,
+            include_tests: resolved.include_tests,
+            include: resolved.include,
+            exclude: resolved.exclude,
+            ignore_patterns: resolved.ignore_patterns,
+            quiet: args.quiet,
+        })?
+    };
 
     let mut stdout = std::io::stdout();
     match format {
