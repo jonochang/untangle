@@ -16,16 +16,16 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "untangle";
-  version = "0.2.0";
+  version = "0.3.0";
 
   src = fetchFromGitHub {
     owner = "jonochang";
     repo = "untangle";
     tag = "v${finalAttrs.version}";
-    hash = "sha256-qjwglo9YNBelLq6wM0QOSspi63qoUyz128Xh1fVRJ50=";
+    hash = "sha256-OerMpKlfOyA9diVL7luDuOEF3/Epa1UqBWg/1VGOo3I=";
   };
 
-  cargoHash = "sha256-+7gsk5YigKZ7KEtkrzFaaelAmiABAkc8DYwBnaZwqD0=";
+  cargoHash = "sha256-5ktLAOiQJkreKVlnsEOGXF8Amrhc56BAYod4ziFVQYc=";
 
   nativeBuildInputs = [
     pkg-config

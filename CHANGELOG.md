@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-03-05
+
+### Added
+
+- Function-level code quality metrics with CRAP scoring, LCOV coverage parsing, and JSON/text reporting.
+- Overall quality report combining Untangle structural metrics with CRAP, including Untangle hotspots.
+- Cucumber BDD test suite covering analyze, graph, diff, quality, and config commands.
+
 ## [0.2.0] - 2026-02-16
 
 ### Added
