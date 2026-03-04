@@ -26,6 +26,11 @@
         packages.untangle = untanglePkg;
         packages.default = untanglePkg;
 
+        apps.default = {
+          type = "app";
+          program = "${untanglePkg}/bin/untangle";
+        };
+
         devShells.default = pkgs.mkShell {
           buildInputs = [
             rustToolchain
