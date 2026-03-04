@@ -17,7 +17,7 @@
         pkgs = import nixpkgs { inherit system overlays; };
 
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = [ "clippy" "rustfmt" "rust-src" ];
+          extensions = [ "clippy" "rustfmt" "rust-src" "llvm-tools-preview" ];
         };
 
         untanglePkg = pkgs.callPackage ./package.nix { };
