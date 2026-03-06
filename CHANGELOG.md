@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2026-03-06
+
+### Fixed
+
+- Pin Nix package source to an immutable commit instead of a mutable release tag archive.
+- Update Nix source hash to match the pinned source and avoid fixed-output hash mismatch errors in consumers.
+- Replace incompatible package test skip flags with `cargoTestFlags = ["--bins"]` so Nix check phase passes reliably.
+
 ## [0.3.0] - 2026-03-05
 
 ### Added
