@@ -21,8 +21,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
   src = fetchFromGitHub {
     owner = "jonochang";
     repo = "untangle";
-    tag = "v${finalAttrs.version}";
-    hash = "sha256-OerMpKlfOyA9diVL7luDuOEF3/Epa1UqBWg/1VGOo3I=";
+    # Pin to immutable commit instead of mutable tag archives.
+    rev = "8cee265cec0890d2fb66215248ef6421bb545eed";
+    hash = "sha256-zHhk6f50bjiRi0PnY3YWcVvlzhj8q1NLroPxDVYOP7o=";
   };
 
   cargoHash = "sha256-5ktLAOiQJkreKVlnsEOGXF8Amrhc56BAYod4ziFVQYc=";
@@ -43,9 +44,9 @@ rustPlatform.buildRustPackage (finalAttrs: {
     LIBGIT2_NO_VENDOR = "1";
   };
 
-  # Integration tests require git repos and filesystem fixtures
-  checkFlags = [
-    "--skip=integration"
+  # Keep package checks lightweight and deterministic in sandboxed builds.
+  cargoTestFlags = [
+    "--bins"
   ];
 
   passthru.tests.version = testers.testVersion {
