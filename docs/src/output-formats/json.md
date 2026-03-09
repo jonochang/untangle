@@ -164,6 +164,43 @@ JSON is the default output format, designed for programmatic consumption in CI p
 }
 ```
 
+## Architecture Output Schema
+
+```json
+{
+  "level": 1,
+  "metadata": {
+    "root": "/path/to/project",
+    "source_node_count": 12,
+    "source_edge_count": 18
+  },
+  "nodes": [
+    {
+      "id": "api",
+      "label": "api",
+      "layer": 0,
+      "module_count": 4
+    }
+  ],
+  "edges": [
+    {
+      "from": "api",
+      "to": "db",
+      "count": 3,
+      "source_location_count": 6,
+      "feedback": false
+    }
+  ],
+  "feedback_edges": [],
+  "layers": [
+    {
+      "index": 0,
+      "nodes": ["api"]
+    }
+  ]
+}
+```
+
 ## Key Fields
 
 ### metadata

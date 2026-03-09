@@ -88,3 +88,24 @@ fn architecture_dot_output() {
         .stdout(predicate::str::contains("rankdir=TB"))
         .stdout(predicate::str::contains("color=firebrick"));
 }
+
+#[test]
+fn architecture_rejects_text_output() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "architecture",
+            "tests/fixtures/python/simple_project",
+            "--lang",
+            "python",
+            "--format",
+            "text",
+            "--quiet",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Configuration error"))
+        .stderr(predicate::str::contains("architecture only supports"))
+        .stderr(predicate::str::contains("--format json"))
+        .stderr(predicate::str::contains("--format"));
+}

@@ -8,6 +8,9 @@ The DOT format produces a Graphviz-compatible `digraph` for dependency visualiza
 # Generate DOT and render to SVG
 untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
 
+# Architecture projection also supports DOT
+untangle architecture ./src --lang python --format dot | dot -Tsvg -o architecture.svg
+
 # Render to PNG
 untangle graph ./src --lang python --format dot | dot -Tpng -o deps.png
 
@@ -35,6 +38,7 @@ digraph dependencies {
 - **Left-to-right layout** (`rankdir=LR`) for readability
 - **Box-shaped nodes** with language-based fill colors (light blue for Go, light yellow for Python, light coral for Ruby, light salmon for Rust)
 - **Edge labels** showing the number of import references when there are multiple import sites for the same edge
+- **Architecture mode** uses a top-to-bottom layered layout (`rankdir=TB`) and highlights feedback edges in red dashed lines
 
 ## Rendering Tools
 
