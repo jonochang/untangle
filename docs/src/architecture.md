@@ -6,7 +6,7 @@ This page provides an overview of the internal module structure for contributors
 
 ```
 CLI (clap)
-  └─ Commands: analyze, diff, graph, config, service-graph
+  └─ Commands: architecture, analyze, diff, graph, config, service-graph
        └─ Config resolution (5-layer merge)
        └─ File discovery (walkdir + globset)
        └─ Parsing (tree-sitter, per-language frontends)
@@ -24,6 +24,7 @@ Command implementations. Each subcommand lives in its own file:
 
 | File | Description |
 |------|-------------|
+| `architecture.rs` | `ArchitectureArgs`, architecture projection output |
 | `analyze.rs` | `AnalyzeArgs`, file discovery, parallel parsing, graph building, output |
 | `diff.rs` | `DiffArgs`, `FailCondition`, git ref graph building, diff computation, policy evaluation |
 | `graph.rs` | `GraphArgs`, DOT/JSON graph export |
@@ -73,6 +74,15 @@ Dependency graph data structures:
 | `ir.rs` | `DepGraph` type alias, `GraphNode`, `GraphEdge`, `NodeKind` |
 | `builder.rs` | `GraphBuilder`, `ResolvedImport` — accumulates edges, deduplicates |
 | `diff.rs` | `DiffResult`, `Verdict`, `SummaryDelta`, change types |
+| `load.rs` | Shared dependency-graph loading for CLI commands |
+
+### `src/architecture/`
+
+Projected architecture view:
+
+| File | Description |
+|------|-------------|
+| `mod.rs` | Architecture projection, feedback-edge selection, layer assignment, DOT output |
 
 ### `src/metrics/`
 

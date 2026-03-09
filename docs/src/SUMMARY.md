@@ -10,6 +10,7 @@
 # Commands
 
 - [Overview](./commands/README.md)
+  - [architecture](./commands/architecture.md)
   - [analyze](./commands/analyze.md)
   - [diff](./commands/diff.md)
   - [graph](./commands/graph.md)

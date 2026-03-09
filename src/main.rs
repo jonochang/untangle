@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+mod architecture;
 mod cli;
 mod config;
 mod errors;

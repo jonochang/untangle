@@ -27,6 +27,9 @@ untangle quality ./src --metric crap --coverage lcov.info --lang rust --format t
 
 # Export graph for visualization
 untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
+
+# Project a layered architecture view
+untangle architecture ./src --lang python --format dot | dot -Tsvg -o architecture.svg
 ```
 
 ## What It Measures

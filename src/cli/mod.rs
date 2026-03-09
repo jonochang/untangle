@@ -1,4 +1,5 @@
 pub mod analyze;
+pub mod architecture;
 pub mod config;
 pub mod diff;
 pub mod graph;
@@ -21,6 +22,8 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
+    /// View projected architecture layers
+    Architecture(architecture::ArchitectureArgs),
     /// Analyze dependency structure of a codebase
     Analyze(analyze::AnalyzeArgs),
     /// Compare dependency structure between two git refs
@@ -38,6 +41,7 @@ pub enum Commands {
 /// Dispatch to the appropriate command handler.
 pub fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
+        Commands::Architecture(args) => architecture::run(&args),
         Commands::Analyze(args) => analyze::run(&args),
         Commands::Diff(args) => diff::run(&args),
         Commands::Graph(args) => graph::run(&args),

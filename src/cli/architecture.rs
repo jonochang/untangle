@@ -1,3 +1,4 @@
+use crate::architecture;
 use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::errors::{Result, UntangleError};
 use crate::graph::load::load_dependency_graph;
@@ -7,7 +8,7 @@ use clap::Args;
 use std::path::PathBuf;
 
 #[derive(Debug, Args)]
-pub struct GraphArgs {
+pub struct ArchitectureArgs {
     /// Path to analyze
     pub path: PathBuf,
 
@@ -18,6 +19,10 @@ pub struct GraphArgs {
     /// Output format (json or dot)
     #[arg(long)]
     pub format: Option<OutputFormat>,
+
+    /// Hierarchy depth to project
+    #[arg(long, default_value_t = 1)]
+    pub level: usize,
 
     /// Include test files
     #[arg(long)]
@@ -36,7 +41,7 @@ pub struct GraphArgs {
     pub quiet: bool,
 }
 
-impl GraphArgs {
+impl ArchitectureArgs {
     fn to_cli_overrides(&self) -> CliOverrides {
         CliOverrides {
             lang: self.lang,
@@ -54,7 +59,7 @@ fn parse_language(s: &str) -> std::result::Result<Language, String> {
     s.parse()
 }
 
-pub fn run(args: &GraphArgs) -> Result<()> {
+pub fn run(args: &ArchitectureArgs) -> Result<()> {
     let root = args
         .path
         .canonicalize()
@@ -64,32 +69,17 @@ pub fn run(args: &GraphArgs) -> Result<()> {
     let config = resolve_config(&root, &args.to_cli_overrides())?;
     let format = config.format.parse().unwrap_or(OutputFormat::Dot);
     let graph = load_dependency_graph(&root, &config)?;
+    let architecture = architecture::project_architecture(&graph, &root, args.level.max(1));
     let mut stdout = std::io::stdout();
 
     match format {
-        OutputFormat::Dot => crate::output::dot::write_dot(&mut stdout, &graph)?,
-        OutputFormat::Json => {
-            let nodes: Vec<_> = graph.node_indices().map(|i| &graph[i]).collect();
-            let edges: Vec<_> = graph
-                .edge_indices()
-                .map(|e| {
-                    let (s, t) = graph.edge_endpoints(e).unwrap();
-                    serde_json::json!({
-                        "from": graph[s].name,
-                        "to": graph[t].name,
-                        "source_locations": graph[e].source_locations,
-                    })
-                })
-                .collect();
-            serde_json::to_writer_pretty(
-                &mut stdout,
-                &serde_json::json!({
-                    "nodes": nodes,
-                    "edges": edges,
-                }),
-            )?;
+        OutputFormat::Json => serde_json::to_writer_pretty(&mut stdout, &architecture)?,
+        OutputFormat::Dot => architecture::write_dot(&mut stdout, &architecture)?,
+        _ => {
+            return Err(crate::errors::UntangleError::Config(
+                "architecture only supports --format json or --format dot".to_string(),
+            ))
         }
-        _ => crate::output::dot::write_dot(&mut stdout, &graph)?,
     }
 
     Ok(())

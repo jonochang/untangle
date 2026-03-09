@@ -39,4 +39,4 @@ Pre-built binaries for Linux, macOS, and Windows are available on the [releases 
 untangle --help
 ```
 
-You should see the available subcommands: `analyze`, `diff`, `graph`, and `config`.
+You should see the available subcommands: `architecture`, `analyze`, `diff`, `graph`, `config`, `service-graph`, and `quality`.
