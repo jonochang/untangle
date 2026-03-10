@@ -4,6 +4,8 @@ A fast, multi-language dependency graph analyzer that catches structural regress
 
 Untangle builds module-level dependency graphs from your source code, computes structural complexity metrics, and diffs them between git revisions. Add it to your CI pipeline to fail PRs that introduce circular dependencies or increase coupling.
 
+Version `0.4.0` adds a layered architecture view and consolidates the CLI around `analyze` submodes for report, graph, and architecture projections.
+
 ## Supported Languages
 
 | Language | Granularity | Parser |
@@ -19,18 +21,28 @@ Untangle builds module-level dependency graphs from your source code, computes s
 # Analyze current state
 untangle analyze report ./src --lang python
 
+# Export the raw dependency graph
+untangle analyze graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
+
+# Project a layered architecture view
+untangle analyze architecture ./src --lang python --format dot | dot -Tsvg -o architecture.svg
+
 # Diff against main (the CI use case)
 untangle diff --base origin/main --head HEAD --fail-on fanout-increase,new-scc
 
 # Compute CRAP (complexity + coverage) for functions
 untangle quality functions ./src --metric crap --coverage lcov.info --lang rust --format text
-
-# Export graph for visualization
-untangle analyze graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
-
-# Project a layered architecture view
-untangle analyze architecture ./src --lang python --format dot | dot -Tsvg -o architecture.svg
 ```
+
+## Commands
+
+- `untangle analyze report [path]` prints the standard structural report in `text`, `json`, or `sarif`.
+- `untangle analyze graph [path]` exports the raw dependency graph in `dot` or `json`.
+- `untangle analyze architecture [path]` projects a layered architecture view in `dot` or `json`.
+- `untangle diff [path]` compares two git revisions and supports CI policy gating.
+- `untangle quality functions [path]` and `untangle quality project [path]` report function-level and aggregate quality metrics.
+- `untangle service-graph [path]` derives service dependencies from `[services]` config plus API metadata.
+- `untangle config show [path]` and `untangle config explain [path]` inspect merged configuration.
 
 ## What It Measures
 
@@ -87,9 +99,15 @@ insights = "auto"
 [analyze.graph]
 format = "dot"
 
+[analyze.architecture]
+format = "dot"
+
 [diff]
 format = "json"
 fail_on = ["fanout-increase", "new-scc", "scc-growth"]
+
+[quality]
+format = "text"
 ```
 
 ## Example Output
@@ -122,6 +140,8 @@ cargo build --release
 ```
 
 Pre-built binaries for Linux, macOS, and Windows are available on the [releases page](https://github.com/jonochang/untangle/releases).
+
+Nix users can also build from [`package.nix`](./package.nix).
 
 ## How It Works
 

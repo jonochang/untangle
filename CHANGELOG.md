@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-03-10
+
+### Added
+
+- Layered architecture projection with DOT and JSON output for higher-level dependency views.
+- Shared CLI argument handling and per-command format validation, so unsupported format combinations are rejected earlier.
+- Expanded BDD and integration coverage for architecture and service-graph command flows.
+- API v2 design documentation covering the updated command model, config layout, and JSON contract.
+
+### Changed
+
+- Reworked the CLI around namespaced analysis modes such as `untangle analyze report`, `untangle analyze graph`, and `untangle analyze architecture`.
+- Standardized command help, config defaults, and output format behavior across `analyze`, `diff`, `quality`, `service-graph`, and `config`.
+- Refreshed README and docs examples to match the current command surface and release capabilities.
+
 ## [0.3.2] - 2026-03-06
 
 ### Fixed
