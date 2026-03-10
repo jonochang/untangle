@@ -113,3 +113,35 @@ fn quality_functions_rejects_overall_metric() {
         .failure()
         .stderr(predicate::str::contains("supports only function-level"));
 }
+
+#[test]
+fn quality_functions_complexity_works_without_coverage() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "quality",
+            "functions",
+            "tests/fixtures/quality",
+            "--lang",
+            "rust",
+            "--metric",
+            "complexity",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["kind"], "quality.functions");
+    assert_eq!(json["report"]["metadata"]["metric"], "complexity");
+    assert_eq!(
+        json["report"]["metadata"]["coverage_file"],
+        serde_json::Value::Null
+    );
+    assert!(json["report"]["results"].to_string().contains("\"simple\""));
+}

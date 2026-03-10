@@ -15,6 +15,7 @@ use std::path::PathBuf;
 #[serde(rename_all = "lowercase")]
 pub enum QualityMetricKind {
     Crap,
+    Complexity,
     Overall,
 }
 
@@ -22,6 +23,7 @@ impl std::fmt::Display for QualityMetricKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             QualityMetricKind::Crap => write!(f, "crap"),
+            QualityMetricKind::Complexity => write!(f, "complexity"),
             QualityMetricKind::Overall => write!(f, "overall"),
         }
     }
@@ -33,6 +35,7 @@ impl std::str::FromStr for QualityMetricKind {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "crap" => Ok(QualityMetricKind::Crap),
+            "complexity" | "cyclomatic" | "cc" => Ok(QualityMetricKind::Complexity),
             "overall" | "all" => Ok(QualityMetricKind::Overall),
             _ => Err(format!("unknown metric: {s}")),
         }
