@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 mod analysis_context;
+mod analysis_report;
 mod architecture;
 mod cli;
 mod config;
