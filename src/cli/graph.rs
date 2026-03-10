@@ -1,6 +1,7 @@
+use crate::analysis_context::{canonicalize_root, resolve_project_root};
 use crate::cli::common::{RuntimeArgs, TargetArgs};
 use crate::config::resolve::{resolve_config, CliOverrides};
-use crate::errors::{Result, UntangleError};
+use crate::errors::Result;
 use crate::formats::GraphFormat;
 use crate::graph::load::load_dependency_graph;
 use clap::Args;
@@ -32,19 +33,12 @@ impl GraphArgs {
 }
 
 pub fn run(args: &GraphArgs) -> Result<()> {
-    let path = args
-        .target
-        .path
-        .clone()
-        .unwrap_or_else(|| ".".into());
-    let root = path
-        .canonicalize()
-        .map_err(|_| UntangleError::NoFiles {
-            path,
-        })?;
-    let config = resolve_config(&root, &args.to_cli_overrides())?;
+    let path = args.target.path.clone().unwrap_or_else(|| ".".into());
+    let scan_root = canonicalize_root(&path)?;
+    let project_root = resolve_project_root(&scan_root, args.target.lang);
+    let config = resolve_config(&project_root, &args.to_cli_overrides())?;
     let format = args.format.unwrap_or(config.analyze_graph.format);
-    let graph = load_dependency_graph(&root, &config)?;
+    let graph = load_dependency_graph(&scan_root, &project_root, &config)?;
     let mut stdout = std::io::stdout();
 
     match format {

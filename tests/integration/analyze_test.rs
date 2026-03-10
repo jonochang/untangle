@@ -94,7 +94,13 @@ fn analyze_report_auto_detect_go() {
 fn analyze_report_nonexistent_path_returns_failure() {
     Command::cargo_bin("untangle")
         .unwrap()
-        .args(["analyze", "report", "tests/fixtures/nonexistent", "--lang", "go"])
+        .args([
+            "analyze",
+            "report",
+            "tests/fixtures/nonexistent",
+            "--lang",
+            "go",
+        ])
         .assert()
         .failure()
         .code(1);
@@ -269,6 +275,62 @@ fn analyze_report_ruby_zeitwerk_resolves_constants() {
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     let edge_count = json["metadata"]["edge_count"].as_u64().unwrap_or(0);
     assert!(edge_count >= 1);
+}
+
+#[test]
+fn analyze_report_rust_subdirectory_uses_crate_root_context() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "report",
+            "tests/fixtures/rust/simple_crate/src",
+            "--lang",
+            "rust",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(
+        json["metadata"]["root"],
+        "/Users/jonochang/projects/lib/jc/untangle/tests/fixtures/rust/simple_crate"
+    );
+    assert_eq!(json["metadata"]["node_count"], 3);
+    assert_eq!(json["metadata"]["edge_count"], 2);
+    assert!(json["metadata"]["unresolved_imports"].as_u64().unwrap_or(0) <= 1);
+}
+
+#[test]
+fn analyze_graph_rust_subdirectory_uses_crate_root_context() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "analyze",
+            "graph",
+            "tests/fixtures/rust/simple_crate/src",
+            "--lang",
+            "rust",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["kind"], "analyze.graph");
+    assert_eq!(json["nodes"].as_array().map(|nodes| nodes.len()), Some(3));
+    assert_eq!(json["edges"].as_array().map(|edges| edges.len()), Some(2));
 }
 
 #[test]

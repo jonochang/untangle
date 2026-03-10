@@ -1,7 +1,8 @@
-use crate::cli::common::{RuntimeArgs, TargetArgs};
+use crate::analysis_context::{canonicalize_root, resolve_project_root};
 use crate::architecture;
+use crate::cli::common::{RuntimeArgs, TargetArgs};
 use crate::config::resolve::{resolve_config, CliOverrides};
-use crate::errors::{Result, UntangleError};
+use crate::errors::Result;
 use crate::formats::ArchitectureFormat;
 use crate::graph::load::load_dependency_graph;
 use clap::Args;
@@ -37,21 +38,17 @@ impl ArchitectureArgs {
 }
 
 pub fn run(args: &ArchitectureArgs) -> Result<()> {
-    let path = args
-        .target
-        .path
-        .clone()
-        .unwrap_or_else(|| ".".into());
-    let root = path
-        .canonicalize()
-        .map_err(|_| UntangleError::NoFiles {
-            path,
-        })?;
-    let config = resolve_config(&root, &args.to_cli_overrides())?;
+    let path = args.target.path.clone().unwrap_or_else(|| ".".into());
+    let scan_root = canonicalize_root(&path)?;
+    let project_root = resolve_project_root(&scan_root, args.target.lang);
+    let config = resolve_config(&project_root, &args.to_cli_overrides())?;
     let format = args.format.unwrap_or(config.analyze_architecture.format);
-    let graph = load_dependency_graph(&root, &config)?;
-    let level = args.level.unwrap_or(config.analyze_architecture.level).max(1);
-    let architecture = architecture::project_architecture(&graph, &root, level);
+    let graph = load_dependency_graph(&scan_root, &project_root, &config)?;
+    let level = args
+        .level
+        .unwrap_or(config.analyze_architecture.level)
+        .max(1);
+    let architecture = architecture::project_architecture(&graph, &project_root, level);
     let mut stdout = std::io::stdout();
 
     match format {
