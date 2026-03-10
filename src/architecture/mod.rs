@@ -221,11 +221,11 @@ fn project_node(node: &GraphNode, level: usize) -> String {
 }
 
 fn module_segments(node: &GraphNode) -> Vec<String> {
-    let mut segments = path_segments(&node.path);
+    let mut segments = name_segments(&node.name);
     trim_leading_boilerplate(&mut segments);
     trim_terminal_module_marker(&mut segments);
     if segments.is_empty() {
-        segments = name_segments(&node.name);
+        segments = path_segments(&node.path);
         trim_leading_boilerplate(&mut segments);
         trim_terminal_module_marker(&mut segments);
     }
@@ -256,10 +256,15 @@ fn path_segments(path: &Path) -> Vec<String> {
 }
 
 fn name_segments(name: &str) -> Vec<String> {
-    name.split('.')
+    let mut segments: Vec<String> = name
+        .split('.')
         .filter(|segment| !segment.is_empty())
         .map(ToString::to_string)
-        .collect()
+        .collect();
+    if segments.len() > 2 {
+        segments.remove(0);
+    }
+    segments
 }
 
 fn trim_leading_boilerplate(segments: &mut Vec<String>) {
@@ -787,5 +792,18 @@ mod tests {
         assert_eq!(module_segments(&python), vec!["api", "handler"]);
         assert_eq!(module_segments(&ruby), vec!["service"]);
         assert_eq!(module_segments(&go), vec!["foo"]);
+    }
+
+    #[test]
+    fn prefers_logical_namespace_over_filesystem_path() {
+        let node = GraphNode {
+            kind: NodeKind::Module,
+            path: PathBuf::from("crates/adapter/generated/client.rs"),
+            name: "untangle.api.client".to_string(),
+            span: None,
+            language: None,
+        };
+
+        assert_eq!(module_segments(&node), vec!["api", "client"]);
     }
 }

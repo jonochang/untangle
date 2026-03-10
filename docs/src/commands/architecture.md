@@ -2,7 +2,7 @@
 
 Project the raw dependency graph into a layered architecture view.
 
-This command reuses `untangle`'s normal parsing and resolution pipeline, then groups modules into higher-level components based on their path hierarchy. The projection and layer assignment are modeled on the original Clojure `arch-view` implementation.
+This command reuses `untangle`'s normal parsing and resolution pipeline, then groups modules into higher-level components based on their logical module namespace, falling back to path hierarchy when needed. The projection and layer assignment are modeled on the original Clojure `arch-view` implementation.
 
 ## Usage
 
@@ -66,5 +66,5 @@ untangle architecture ./src --lang go --format dot | dot -Tsvg -o architecture.s
 
 ## Notes
 
-- The projection strips common source-container roots such as `src`, `lib`, `app`, and `pkg` so the output emphasizes architectural components instead of filesystem boilerplate.
+- The projection prefers logical module namespaces and strips common source-container roots such as `src`, `lib`, `app`, and `pkg` so the output emphasizes architectural components instead of filesystem boilerplate.
 - `architecture` only supports `json` and `dot` in this version.

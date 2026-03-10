@@ -12,7 +12,7 @@ This note records the comparison between `arch-view`'s Clojure implementation an
 
 ## Adapted For `untangle`
 
-- `untangle` derives hierarchy from existing module paths and names across Python, Ruby, Go, and Rust instead of Clojure namespaces.
+- `untangle` derives hierarchy from logical module names first, then falls back to paths across Python, Ruby, Go, and Rust instead of relying on Clojure namespaces alone.
 - Boilerplate source roots such as `src`, `lib`, `app`, and `pkg` are stripped during projection to approximate `arch-view`'s dropped top-level namespace segment.
 - Output is non-interactive JSON or DOT rather than a browser UI.
 - Aggregated edges carry `source_location_count` from the underlying `untangle` graph so the projection still surfaces provenance density.
