@@ -46,7 +46,9 @@ fn analyze_report_text_output() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Untangle Analysis Report"))
-        .stdout(predicate::str::contains("Fan-out:"));
+        .stdout(predicate::str::contains("Summary"))
+        .stdout(predicate::str::contains("Fan-out:"))
+        .stdout(predicate::str::contains("Completed in"));
 }
 
 #[test]

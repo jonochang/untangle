@@ -131,15 +131,7 @@ fn run_diff_same_refs(world: &mut CliWorld) {
     let cwd = Path::new("tests/fixtures/go/diff_repo");
     let output = run_cmd(
         &[
-            "diff",
-            "--base",
-            "HEAD",
-            "--head",
-            "HEAD",
-            "--lang",
-            "go",
-            "--format",
-            "text",
+            "diff", "--base", "HEAD", "--head", "HEAD", "--lang", "go", "--format", "text",
             "--quiet",
         ],
         Some(cwd),
@@ -224,7 +216,12 @@ fn run_config_show(world: &mut CliWorld) {
 #[when("I run service-graph in json format")]
 fn run_service_graph_json(world: &mut CliWorld) {
     let output = run_cmd(
-        &["service-graph", "tests/fixtures/monorepo", "--format", "json"],
+        &[
+            "service-graph",
+            "tests/fixtures/monorepo",
+            "--format",
+            "json",
+        ],
         None,
     );
     world.output = Some(output);

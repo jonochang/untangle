@@ -1,4 +1,4 @@
-use crate::config::ResolvedConfig;
+use crate::config::{keys, ResolvedConfig};
 use std::io::Write;
 
 /// Render `config show` output.
@@ -54,77 +54,136 @@ pub fn render_explain<W: Write>(
 }
 
 fn get_value_for_key(config: &ResolvedConfig, key: &str) -> String {
+    defaults_value(config, key)
+        .or_else(|| analyze_value(config, key))
+        .or_else(|| quality_value(config, key))
+        .or_else(|| rules_value(config, key))
+        .or_else(|| language_value(config, key))
+        .unwrap_or_else(|| "(unknown)".to_string())
+}
+
+fn defaults_value(config: &ResolvedConfig, key: &str) -> Option<String> {
     match key {
-        "defaults.lang" => config
-            .lang
-            .map_or("(auto-detect)".to_string(), |l| l.to_string()),
-        "defaults.quiet" => config.quiet.to_string(),
-        "defaults.include_tests" => config.include_tests.to_string(),
-        "analyze.report.format" => config.analyze_report.format.to_string(),
-        "analyze.report.top" => config
-            .analyze_report
-            .top
-            .map_or("(all)".to_string(), |n| n.to_string()),
-        "analyze.report.insights" => match config.analyze_report.insights {
+        keys::DEFAULTS_LANG => Some(
+            config
+                .lang
+                .map_or("(auto-detect)".to_string(), |l| l.to_string()),
+        ),
+        keys::DEFAULTS_QUIET => Some(config.quiet.to_string()),
+        keys::DEFAULTS_INCLUDE_TESTS => Some(config.include_tests.to_string()),
+        _ => None,
+    }
+}
+
+fn analyze_value(config: &ResolvedConfig, key: &str) -> Option<String> {
+    match key {
+        keys::ANALYZE_REPORT_FORMAT => Some(config.analyze_report.format.to_string()),
+        keys::ANALYZE_REPORT_TOP => Some(
+            config
+                .analyze_report
+                .top
+                .map_or("(all)".to_string(), |n| n.to_string()),
+        ),
+        keys::ANALYZE_REPORT_INSIGHTS => Some(match config.analyze_report.insights {
             crate::config::InsightsConfig::Auto => "auto".to_string(),
             crate::config::InsightsConfig::On => "on".to_string(),
             crate::config::InsightsConfig::Off => "off".to_string(),
-        },
-        "analyze.report.threshold_fanout" => config
-            .analyze_report
-            .threshold_fanout
-            .map_or("(unset)".to_string(), |n| n.to_string()),
-        "analyze.report.threshold_scc" => config
-            .analyze_report
-            .threshold_scc
-            .map_or("(unset)".to_string(), |n| n.to_string()),
-        "analyze.graph.format" => config.analyze_graph.format.to_string(),
-        "analyze.architecture.format" => config.analyze_architecture.format.to_string(),
-        "analyze.architecture.level" => config.analyze_architecture.level.to_string(),
-        "diff.format" => config.diff.format.to_string(),
-        "quality.functions.format" => config.quality_functions.format.to_string(),
-        "quality.functions.top" => config
-            .quality_functions
-            .top
-            .map_or("(all)".to_string(), |n| n.to_string()),
-        "quality.project.format" => config.quality_project.format.to_string(),
-        "quality.project.top" => config
-            .quality_project
-            .top
-            .map_or("(all)".to_string(), |n| n.to_string()),
-        "service_graph.format" => config.service_graph.format.to_string(),
-        "rules.high_fanout.enabled" => config.rules.high_fanout.enabled.to_string(),
-        "rules.high_fanout.min_fanout" => config.rules.high_fanout.min_fanout.to_string(),
-        "rules.high_fanout.relative_to_p90" => config.rules.high_fanout.relative_to_p90.to_string(),
-        "rules.high_fanout.warning_multiplier" => {
-            config.rules.high_fanout.warning_multiplier.to_string()
+        }),
+        keys::ANALYZE_REPORT_THRESHOLD_FANOUT => Some(
+            config
+                .analyze_report
+                .threshold_fanout
+                .map_or("(unset)".to_string(), |n| n.to_string()),
+        ),
+        keys::ANALYZE_REPORT_THRESHOLD_SCC => Some(
+            config
+                .analyze_report
+                .threshold_scc
+                .map_or("(unset)".to_string(), |n| n.to_string()),
+        ),
+        keys::ANALYZE_GRAPH_FORMAT => Some(config.analyze_graph.format.to_string()),
+        keys::ANALYZE_ARCHITECTURE_FORMAT => Some(config.analyze_architecture.format.to_string()),
+        keys::ANALYZE_ARCHITECTURE_LEVEL => Some(config.analyze_architecture.level.to_string()),
+        keys::DIFF_FORMAT => Some(config.diff.format.to_string()),
+        keys::SERVICE_GRAPH_FORMAT => Some(config.service_graph.format.to_string()),
+        _ => None,
+    }
+}
+
+fn quality_value(config: &ResolvedConfig, key: &str) -> Option<String> {
+    match key {
+        keys::QUALITY_FUNCTIONS_FORMAT => Some(config.quality_functions.format.to_string()),
+        keys::QUALITY_FUNCTIONS_TOP => Some(
+            config
+                .quality_functions
+                .top
+                .map_or("(all)".to_string(), |n| n.to_string()),
+        ),
+        keys::QUALITY_PROJECT_FORMAT => Some(config.quality_project.format.to_string()),
+        keys::QUALITY_PROJECT_TOP => Some(
+            config
+                .quality_project
+                .top
+                .map_or("(all)".to_string(), |n| n.to_string()),
+        ),
+        _ => None,
+    }
+}
+
+fn rules_value(config: &ResolvedConfig, key: &str) -> Option<String> {
+    match key {
+        keys::RULES_HIGH_FANOUT_ENABLED => Some(config.rules.high_fanout.enabled.to_string()),
+        keys::RULES_HIGH_FANOUT_MIN_FANOUT => Some(config.rules.high_fanout.min_fanout.to_string()),
+        keys::RULES_HIGH_FANOUT_RELATIVE_TO_P90 => {
+            Some(config.rules.high_fanout.relative_to_p90.to_string())
         }
-        "rules.god_module.enabled" => config.rules.god_module.enabled.to_string(),
-        "rules.god_module.min_fanout" => config.rules.god_module.min_fanout.to_string(),
-        "rules.god_module.min_fanin" => config.rules.god_module.min_fanin.to_string(),
-        "rules.god_module.relative_to_p90" => config.rules.god_module.relative_to_p90.to_string(),
-        "rules.circular_dependency.enabled" => config.rules.circular_dependency.enabled.to_string(),
-        "rules.circular_dependency.warning_min_size" => config
-            .rules
-            .circular_dependency
-            .warning_min_size
-            .to_string(),
-        "rules.deep_chain.enabled" => config.rules.deep_chain.enabled.to_string(),
-        "rules.deep_chain.absolute_depth" => config.rules.deep_chain.absolute_depth.to_string(),
-        "rules.deep_chain.relative_multiplier" => {
-            config.rules.deep_chain.relative_multiplier.to_string()
+        keys::RULES_HIGH_FANOUT_WARNING_MULTIPLIER => {
+            Some(config.rules.high_fanout.warning_multiplier.to_string())
         }
-        "rules.deep_chain.relative_min_depth" => {
-            config.rules.deep_chain.relative_min_depth.to_string()
+        keys::RULES_GOD_MODULE_ENABLED => Some(config.rules.god_module.enabled.to_string()),
+        keys::RULES_GOD_MODULE_MIN_FANOUT => Some(config.rules.god_module.min_fanout.to_string()),
+        keys::RULES_GOD_MODULE_MIN_FANIN => Some(config.rules.god_module.min_fanin.to_string()),
+        keys::RULES_GOD_MODULE_RELATIVE_TO_P90 => {
+            Some(config.rules.god_module.relative_to_p90.to_string())
         }
-        "rules.high_entropy.enabled" => config.rules.high_entropy.enabled.to_string(),
-        "rules.high_entropy.min_entropy" => config.rules.high_entropy.min_entropy.to_string(),
-        "rules.high_entropy.min_fanout" => config.rules.high_entropy.min_fanout.to_string(),
-        "go.exclude_stdlib" => config.go.exclude_stdlib.to_string(),
-        "python.resolve_relative" => config.python.resolve_relative.to_string(),
-        "ruby.zeitwerk" => config.ruby.zeitwerk.to_string(),
-        "ruby.load_path" => format!("{:?}", config.ruby.load_path),
-        _ => "(unknown)".to_string(),
+        keys::RULES_CIRCULAR_DEPENDENCY_ENABLED => {
+            Some(config.rules.circular_dependency.enabled.to_string())
+        }
+        keys::RULES_CIRCULAR_DEPENDENCY_WARNING_MIN_SIZE => Some(
+            config
+                .rules
+                .circular_dependency
+                .warning_min_size
+                .to_string(),
+        ),
+        keys::RULES_DEEP_CHAIN_ENABLED => Some(config.rules.deep_chain.enabled.to_string()),
+        keys::RULES_DEEP_CHAIN_ABSOLUTE_DEPTH => {
+            Some(config.rules.deep_chain.absolute_depth.to_string())
+        }
+        keys::RULES_DEEP_CHAIN_RELATIVE_MULTIPLIER => {
+            Some(config.rules.deep_chain.relative_multiplier.to_string())
+        }
+        keys::RULES_DEEP_CHAIN_RELATIVE_MIN_DEPTH => {
+            Some(config.rules.deep_chain.relative_min_depth.to_string())
+        }
+        keys::RULES_HIGH_ENTROPY_ENABLED => Some(config.rules.high_entropy.enabled.to_string()),
+        keys::RULES_HIGH_ENTROPY_MIN_ENTROPY => {
+            Some(config.rules.high_entropy.min_entropy.to_string())
+        }
+        keys::RULES_HIGH_ENTROPY_MIN_FANOUT => {
+            Some(config.rules.high_entropy.min_fanout.to_string())
+        }
+        _ => None,
+    }
+}
+
+fn language_value(config: &ResolvedConfig, key: &str) -> Option<String> {
+    match key {
+        keys::GO_EXCLUDE_STDLIB => Some(config.go.exclude_stdlib.to_string()),
+        keys::PYTHON_RESOLVE_RELATIVE => Some(config.python.resolve_relative.to_string()),
+        keys::RUBY_ZEITWERK => Some(config.ruby.zeitwerk.to_string()),
+        keys::RUBY_LOAD_PATH => Some(format!("{:?}", config.ruby.load_path)),
+        _ => None,
     }
 }
 
@@ -219,5 +278,17 @@ mod tests {
         let output = String::from_utf8(buf).unwrap();
 
         assert!(output.contains("Unknown rule category: nonexistent"));
+    }
+
+    #[test]
+    fn every_known_key_has_a_renderable_value() {
+        let config = make_test_config();
+        for key in keys::ALL {
+            assert_ne!(
+                get_value_for_key(&config, key),
+                "(unknown)",
+                "missing key: {key}"
+            );
+        }
     }
 }

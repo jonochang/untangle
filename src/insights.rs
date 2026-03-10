@@ -50,179 +50,29 @@ pub struct InsightMetrics {
     pub depth: Option<usize>,
 }
 
+#[derive(Debug, Clone)]
+struct NodeMetrics {
+    name: String,
+    file_path: Option<String>,
+    fanout: usize,
+    fanin: usize,
+    entropy: f64,
+}
+
+#[derive(Debug, Clone)]
+struct EvaluatedNode {
+    metrics: NodeMetrics,
+    rules: ResolvedRules,
+}
+
 pub fn generate_insights(graph: &DepGraph, summary: &Summary, sccs: &[SccInfo]) -> Vec<Insight> {
-    let mut insights = Vec::new();
-
-    // Track modules that qualify as god modules so we can dedup
-    let mut god_modules: HashSet<String> = HashSet::new();
-
-    // Collect per-node metrics
-    let node_metrics: Vec<_> = graph
-        .node_indices()
-        .map(|idx| {
-            let name = graph[idx].name.clone();
-            let fo = fan_out(graph, idx);
-            let fi = fan_in(graph, idx);
-            let edge_weights: Vec<usize> = graph
-                .edges_directed(idx, Direction::Outgoing)
-                .map(|e| e.weight().weight)
-                .collect();
-            let entropy = shannon_entropy(&edge_weights);
-            (name, fo, fi, entropy)
-        })
-        .collect();
-
-    // God Module: high fan-out AND high fan-in, both above p90 and both >= 3
-    for (name, fo, fi, _entropy) in &node_metrics {
-        if *fo > summary.p90_fanout && *fi > summary.p90_fanin && *fo >= 3 && *fi >= 3 {
-            god_modules.insert(name.clone());
-            insights.push(Insight {
-                category: InsightCategory::GodModule,
-                severity: InsightSeverity::Warning,
-                module: name.clone(),
-                message: format!(
-                    "Module '{}' has both high fan-out ({}) and high fan-in ({}), \
-                     suggesting it may be acting as a central hub. \
-                     Consider decomposing it to reduce coupling.",
-                    name, fo, fi
-                ),
-                metrics: InsightMetrics {
-                    fanout: Some(*fo),
-                    fanin: Some(*fi),
-                    entropy: None,
-                    scc_id: None,
-                    scc_size: None,
-                    depth: None,
-                },
-            });
-        }
-    }
-
-    // High Fan-out: fanout > p90 and fanout >= 5, skip god modules
-    for (name, fo, _fi, _entropy) in &node_metrics {
-        if god_modules.contains(name) {
-            continue;
-        }
-        if *fo > summary.p90_fanout && *fo >= 5 {
-            let severity = if *fo >= 2 * summary.p90_fanout {
-                InsightSeverity::Warning
-            } else {
-                InsightSeverity::Info
-            };
-            insights.push(Insight {
-                category: InsightCategory::HighFanout,
-                severity,
-                module: name.clone(),
-                message: format!(
-                    "Module '{}' has a fan-out of {} (p90={}). \
-                     Consider whether it has too many responsibilities \
-                     and might benefit from being split.",
-                    name, fo, summary.p90_fanout
-                ),
-                metrics: InsightMetrics {
-                    fanout: Some(*fo),
-                    fanin: None,
-                    entropy: None,
-                    scc_id: None,
-                    scc_size: None,
-                    depth: None,
-                },
-            });
-        }
-    }
-
-    // Circular Dependency: one insight per non-trivial SCC
-    for scc in sccs {
-        let severity = if scc.size >= 4 {
-            InsightSeverity::Warning
-        } else {
-            InsightSeverity::Info
-        };
-        let members_str = scc.members.join(", ");
-        insights.push(Insight {
-            category: InsightCategory::CircularDependency,
-            severity,
-            module: "(graph-level)".to_string(),
-            message: format!(
-                "Modules {} form a circular dependency (SCC #{}, {} modules). \
-                 Consider introducing an interface to break this cycle.",
-                members_str, scc.id, scc.size
-            ),
-            metrics: InsightMetrics {
-                fanout: None,
-                fanin: None,
-                entropy: None,
-                scc_id: Some(scc.id),
-                scc_size: Some(scc.size),
-                depth: None,
-            },
-        });
-    }
-
-    // Deep Chain: max_depth >= 8 OR (max_depth > 2*avg_depth && max_depth >= 5)
-    if summary.max_depth >= 8
-        || (summary.max_depth as f64 > 2.0 * summary.avg_depth && summary.max_depth >= 5)
-    {
-        insights.push(Insight {
-            category: InsightCategory::DeepChain,
-            severity: InsightSeverity::Info,
-            module: "(graph-level)".to_string(),
-            message: format!(
-                "The longest dependency chain is {} levels deep (avg: {:.1}). \
-                 Deep chains may increase build times. \
-                 Consider consolidating intermediate modules.",
-                summary.max_depth, summary.avg_depth
-            ),
-            metrics: InsightMetrics {
-                fanout: None,
-                fanin: None,
-                entropy: None,
-                scc_id: None,
-                scc_size: None,
-                depth: Some(summary.max_depth),
-            },
-        });
-    }
-
-    // High Entropy: entropy > 2.5 and fanout >= 5, skip god modules
-    for (name, fo, _fi, entropy) in &node_metrics {
-        if god_modules.contains(name) {
-            continue;
-        }
-        if *entropy > 2.5 && *fo >= 5 {
-            insights.push(Insight {
-                category: InsightCategory::HighEntropy,
-                severity: InsightSeverity::Info,
-                module: name.clone(),
-                message: format!(
-                    "Module '{}' has high dependency entropy ({:.2}), \
-                     meaning its {} dependencies are spread broadly. \
-                     Consider consolidating behind a facade.",
-                    name, entropy, fo
-                ),
-                metrics: InsightMetrics {
-                    fanout: Some(*fo),
-                    fanin: None,
-                    entropy: Some((*entropy * 100.0).round() / 100.0),
-                    scc_id: None,
-                    scc_size: None,
-                    depth: None,
-                },
-            });
-        }
-    }
-
-    // Sort: Warnings first, then by category priority, then alphabetically by module
-    insights.sort_by(|a, b| {
-        let sev_a = matches!(a.severity, InsightSeverity::Warning);
-        let sev_b = matches!(b.severity, InsightSeverity::Warning);
-        sev_b
-            .cmp(&sev_a)
-            .then(a.category.cmp(&b.category))
-            .then(a.module.cmp(&b.module))
-    });
-
-    insights
+    generate_insights_internal(
+        collect_node_metrics(graph),
+        summary,
+        sccs,
+        &ResolvedRules::default(),
+        &[],
+    )
 }
 
 /// Generate insights using resolved configuration rules and per-path overrides.
@@ -233,227 +83,295 @@ pub fn generate_insights_with_config(
     rules: &ResolvedRules,
     overrides: &[(globset::GlobMatcher, OverrideEntry)],
 ) -> Vec<Insight> {
-    let mut insights = Vec::new();
-    let mut god_modules: HashSet<String> = HashSet::new();
+    generate_insights_internal(collect_node_metrics(graph), summary, sccs, rules, overrides)
+}
 
-    // Collect per-node metrics (including file path for override matching)
-    let node_metrics: Vec<_> = graph
+fn collect_node_metrics(graph: &DepGraph) -> Vec<NodeMetrics> {
+    graph
         .node_indices()
         .map(|idx| {
-            let name = graph[idx].name.clone();
-            let file_path = graph[idx].path.to_string_lossy().to_string();
-            let fo = fan_out(graph, idx);
-            let fi = fan_in(graph, idx);
             let edge_weights: Vec<usize> = graph
                 .edges_directed(idx, Direction::Outgoing)
                 .map(|e| e.weight().weight)
                 .collect();
-            let entropy = shannon_entropy(&edge_weights);
-            (name, file_path, fo, fi, entropy)
+            NodeMetrics {
+                name: graph[idx].name.clone(),
+                file_path: Some(graph[idx].path.to_string_lossy().to_string()),
+                fanout: fan_out(graph, idx),
+                fanin: fan_in(graph, idx),
+                entropy: shannon_entropy(&edge_weights),
+            }
         })
-        .collect();
+        .collect()
+}
 
-    // God Module
-    if rules.god_module.enabled {
-        for (name, file_path, fo, fi, _entropy) in &node_metrics {
+fn generate_insights_internal(
+    node_metrics: Vec<NodeMetrics>,
+    summary: &Summary,
+    sccs: &[SccInfo],
+    rules: &ResolvedRules,
+    overrides: &[(globset::GlobMatcher, OverrideEntry)],
+) -> Vec<Insight> {
+    let evaluated = evaluate_nodes(node_metrics, rules, overrides);
+    let mut insights = Vec::new();
+    let mut god_modules: HashSet<String> = HashSet::new();
+    insights.extend(evaluate_god_modules(&evaluated, summary, &mut god_modules));
+    insights.extend(evaluate_high_fanout(&evaluated, summary, &god_modules));
+    insights.extend(evaluate_circular_dependencies(sccs, rules));
+    if let Some(insight) = evaluate_deep_chain(summary, rules) {
+        insights.push(insight);
+    }
+    insights.extend(evaluate_high_entropy(&evaluated, &god_modules));
+    sort_insights(&mut insights);
+    insights
+}
+
+fn evaluate_nodes(
+    node_metrics: Vec<NodeMetrics>,
+    rules: &ResolvedRules,
+    overrides: &[(globset::GlobMatcher, OverrideEntry)],
+) -> Vec<EvaluatedNode> {
+    node_metrics
+        .into_iter()
+        .filter_map(|metrics| {
             let (effective_rules, enabled) =
                 crate::config::overrides::apply_overrides_with_file_path(
-                    name,
-                    Some(file_path),
+                    &metrics.name,
+                    metrics.file_path.as_deref(),
                     rules,
                     overrides,
                 );
-            if !enabled || !effective_rules.god_module.enabled {
-                continue;
-            }
-            let r = &effective_rules.god_module;
-            let fo_check = if r.relative_to_p90 {
-                *fo > summary.p90_fanout && *fo >= r.min_fanout
-            } else {
-                *fo >= r.min_fanout
-            };
-            let fi_check = if r.relative_to_p90 {
-                *fi > summary.p90_fanin && *fi >= r.min_fanin
-            } else {
-                *fi >= r.min_fanin
-            };
-            if fo_check && fi_check {
-                god_modules.insert(name.clone());
-                insights.push(Insight {
-                    category: InsightCategory::GodModule,
-                    severity: InsightSeverity::Warning,
-                    module: name.clone(),
-                    message: format!(
-                        "Module '{}' has both high fan-out ({}) and high fan-in ({}), \
-                         suggesting it may be acting as a central hub. \
-                         Consider decomposing it to reduce coupling.",
-                        name, fo, fi
-                    ),
-                    metrics: InsightMetrics {
-                        fanout: Some(*fo),
-                        fanin: Some(*fi),
-                        entropy: None,
-                        scc_id: None,
-                        scc_size: None,
-                        depth: None,
-                    },
-                });
-            }
+            enabled.then_some(EvaluatedNode {
+                metrics,
+                rules: effective_rules,
+            })
+        })
+        .collect()
+}
+
+fn evaluate_god_modules(
+    nodes: &[EvaluatedNode],
+    summary: &Summary,
+    god_modules: &mut HashSet<String>,
+) -> Vec<Insight> {
+    let mut insights = Vec::new();
+    for node in nodes {
+        let rule = &node.rules.god_module;
+        if !rule.enabled {
+            continue;
+        }
+        let fo_check = if rule.relative_to_p90 {
+            node.metrics.fanout > summary.p90_fanout && node.metrics.fanout >= rule.min_fanout
+        } else {
+            node.metrics.fanout >= rule.min_fanout
+        };
+        let fi_check = if rule.relative_to_p90 {
+            node.metrics.fanin > summary.p90_fanin && node.metrics.fanin >= rule.min_fanin
+        } else {
+            node.metrics.fanin >= rule.min_fanin
+        };
+        if fo_check && fi_check {
+            god_modules.insert(node.metrics.name.clone());
+            insights.push(build_god_module_insight(&node.metrics));
         }
     }
+    insights
+}
 
-    // High Fan-out
-    if rules.high_fanout.enabled {
-        for (name, file_path, fo, _fi, _entropy) in &node_metrics {
-            if god_modules.contains(name) {
-                continue;
-            }
-            let (effective_rules, enabled) =
-                crate::config::overrides::apply_overrides_with_file_path(
-                    name,
-                    Some(file_path),
-                    rules,
-                    overrides,
-                );
-            if !enabled || !effective_rules.high_fanout.enabled {
-                continue;
-            }
-            let r = &effective_rules.high_fanout;
-            let triggers = if r.relative_to_p90 {
-                *fo > summary.p90_fanout && *fo >= r.min_fanout
+fn evaluate_high_fanout(
+    nodes: &[EvaluatedNode],
+    summary: &Summary,
+    god_modules: &HashSet<String>,
+) -> Vec<Insight> {
+    let mut insights = Vec::new();
+    for node in nodes {
+        if god_modules.contains(&node.metrics.name) {
+            continue;
+        }
+        let rule = &node.rules.high_fanout;
+        if !rule.enabled {
+            continue;
+        }
+        let triggers = if rule.relative_to_p90 {
+            node.metrics.fanout > summary.p90_fanout && node.metrics.fanout >= rule.min_fanout
+        } else {
+            node.metrics.fanout >= rule.min_fanout
+        };
+        if triggers {
+            let severity = if node.metrics.fanout >= rule.warning_multiplier * summary.p90_fanout {
+                InsightSeverity::Warning
             } else {
-                *fo >= r.min_fanout
+                InsightSeverity::Info
             };
-            if triggers {
-                let severity = if *fo >= r.warning_multiplier * summary.p90_fanout {
-                    InsightSeverity::Warning
-                } else {
-                    InsightSeverity::Info
-                };
-                insights.push(Insight {
-                    category: InsightCategory::HighFanout,
-                    severity,
-                    module: name.clone(),
-                    message: format!(
-                        "Module '{}' has a fan-out of {} (p90={}). \
-                         Consider whether it has too many responsibilities \
-                         and might benefit from being split.",
-                        name, fo, summary.p90_fanout
-                    ),
-                    metrics: InsightMetrics {
-                        fanout: Some(*fo),
-                        fanin: None,
-                        entropy: None,
-                        scc_id: None,
-                        scc_size: None,
-                        depth: None,
-                    },
-                });
-            }
+            insights.push(build_high_fanout_insight(
+                &node.metrics,
+                summary.p90_fanout,
+                severity,
+            ));
         }
     }
+    insights
+}
 
-    // Circular Dependency
-    if rules.circular_dependency.enabled {
-        for scc in sccs {
+fn evaluate_circular_dependencies(sccs: &[SccInfo], rules: &ResolvedRules) -> Vec<Insight> {
+    if !rules.circular_dependency.enabled {
+        return Vec::new();
+    }
+    sccs.iter()
+        .map(|scc| {
             let severity = if scc.size >= rules.circular_dependency.warning_min_size {
                 InsightSeverity::Warning
             } else {
                 InsightSeverity::Info
             };
-            let members_str = scc.members.join(", ");
-            insights.push(Insight {
-                category: InsightCategory::CircularDependency,
-                severity,
-                module: "(graph-level)".to_string(),
-                message: format!(
-                    "Modules {} form a circular dependency (SCC #{}, {} modules). \
-                     Consider introducing an interface to break this cycle.",
-                    members_str, scc.id, scc.size
-                ),
-                metrics: InsightMetrics {
-                    fanout: None,
-                    fanin: None,
-                    entropy: None,
-                    scc_id: Some(scc.id),
-                    scc_size: Some(scc.size),
-                    depth: None,
-                },
-            });
+            build_circular_dependency_insight(scc, severity)
+        })
+        .collect()
+}
+
+fn evaluate_deep_chain(summary: &Summary, rules: &ResolvedRules) -> Option<Insight> {
+    let rule = &rules.deep_chain;
+    if !rule.enabled {
+        return None;
+    }
+    (summary.max_depth >= rule.absolute_depth
+        || (summary.max_depth as f64 > rule.relative_multiplier * summary.avg_depth
+            && summary.max_depth >= rule.relative_min_depth))
+        .then(|| build_deep_chain_insight(summary))
+}
+
+fn evaluate_high_entropy(nodes: &[EvaluatedNode], god_modules: &HashSet<String>) -> Vec<Insight> {
+    let mut insights = Vec::new();
+    for node in nodes {
+        if god_modules.contains(&node.metrics.name) {
+            continue;
+        }
+        let rule = &node.rules.high_entropy;
+        if !rule.enabled {
+            continue;
+        }
+        if node.metrics.entropy > rule.min_entropy && node.metrics.fanout >= rule.min_fanout {
+            insights.push(build_high_entropy_insight(&node.metrics));
         }
     }
+    insights
+}
 
-    // Deep Chain
-    if rules.deep_chain.enabled {
-        let dc = &rules.deep_chain;
-        if summary.max_depth >= dc.absolute_depth
-            || (summary.max_depth as f64 > dc.relative_multiplier * summary.avg_depth
-                && summary.max_depth >= dc.relative_min_depth)
-        {
-            insights.push(Insight {
-                category: InsightCategory::DeepChain,
-                severity: InsightSeverity::Info,
-                module: "(graph-level)".to_string(),
-                message: format!(
-                    "The longest dependency chain is {} levels deep (avg: {:.1}). \
-                     Deep chains may increase build times. \
-                     Consider consolidating intermediate modules.",
-                    summary.max_depth, summary.avg_depth
-                ),
-                metrics: InsightMetrics {
-                    fanout: None,
-                    fanin: None,
-                    entropy: None,
-                    scc_id: None,
-                    scc_size: None,
-                    depth: Some(summary.max_depth),
-                },
-            });
-        }
+fn build_god_module_insight(metrics: &NodeMetrics) -> Insight {
+    Insight {
+        category: InsightCategory::GodModule,
+        severity: InsightSeverity::Warning,
+        module: metrics.name.clone(),
+        message: format!(
+            "Module '{}' has both high fan-out ({}) and high fan-in ({}), \
+             suggesting it may be acting as a central hub. \
+             Consider decomposing it to reduce coupling.",
+            metrics.name, metrics.fanout, metrics.fanin
+        ),
+        metrics: InsightMetrics {
+            fanout: Some(metrics.fanout),
+            fanin: Some(metrics.fanin),
+            entropy: None,
+            scc_id: None,
+            scc_size: None,
+            depth: None,
+        },
     }
+}
 
-    // High Entropy
-    if rules.high_entropy.enabled {
-        for (name, file_path, fo, _fi, entropy) in &node_metrics {
-            if god_modules.contains(name) {
-                continue;
-            }
-            let (effective_rules, enabled) =
-                crate::config::overrides::apply_overrides_with_file_path(
-                    name,
-                    Some(file_path),
-                    rules,
-                    overrides,
-                );
-            if !enabled || !effective_rules.high_entropy.enabled {
-                continue;
-            }
-            let r = &effective_rules.high_entropy;
-            if *entropy > r.min_entropy && *fo >= r.min_fanout {
-                insights.push(Insight {
-                    category: InsightCategory::HighEntropy,
-                    severity: InsightSeverity::Info,
-                    module: name.clone(),
-                    message: format!(
-                        "Module '{}' has high dependency entropy ({:.2}), \
-                         meaning its {} dependencies are spread broadly. \
-                         Consider consolidating behind a facade.",
-                        name, entropy, fo
-                    ),
-                    metrics: InsightMetrics {
-                        fanout: Some(*fo),
-                        fanin: None,
-                        entropy: Some((*entropy * 100.0).round() / 100.0),
-                        scc_id: None,
-                        scc_size: None,
-                        depth: None,
-                    },
-                });
-            }
-        }
+fn build_high_fanout_insight(
+    metrics: &NodeMetrics,
+    p90_fanout: usize,
+    severity: InsightSeverity,
+) -> Insight {
+    Insight {
+        category: InsightCategory::HighFanout,
+        severity,
+        module: metrics.name.clone(),
+        message: format!(
+            "Module '{}' has a fan-out of {} (p90={}). \
+             Consider whether it has too many responsibilities \
+             and might benefit from being split.",
+            metrics.name, metrics.fanout, p90_fanout
+        ),
+        metrics: InsightMetrics {
+            fanout: Some(metrics.fanout),
+            fanin: None,
+            entropy: None,
+            scc_id: None,
+            scc_size: None,
+            depth: None,
+        },
     }
+}
 
-    // Sort: Warnings first, then by category priority, then alphabetically by module
+fn build_circular_dependency_insight(scc: &SccInfo, severity: InsightSeverity) -> Insight {
+    let members_str = scc.members.join(", ");
+    Insight {
+        category: InsightCategory::CircularDependency,
+        severity,
+        module: "(graph-level)".to_string(),
+        message: format!(
+            "Modules {} form a circular dependency (SCC #{}, {} modules). \
+             Consider introducing an interface to break this cycle.",
+            members_str, scc.id, scc.size
+        ),
+        metrics: InsightMetrics {
+            fanout: None,
+            fanin: None,
+            entropy: None,
+            scc_id: Some(scc.id),
+            scc_size: Some(scc.size),
+            depth: None,
+        },
+    }
+}
+
+fn build_deep_chain_insight(summary: &Summary) -> Insight {
+    Insight {
+        category: InsightCategory::DeepChain,
+        severity: InsightSeverity::Info,
+        module: "(graph-level)".to_string(),
+        message: format!(
+            "The longest dependency chain is {} levels deep (avg: {:.1}). \
+             Deep chains may increase build times. \
+             Consider consolidating intermediate modules.",
+            summary.max_depth, summary.avg_depth
+        ),
+        metrics: InsightMetrics {
+            fanout: None,
+            fanin: None,
+            entropy: None,
+            scc_id: None,
+            scc_size: None,
+            depth: Some(summary.max_depth),
+        },
+    }
+}
+
+fn build_high_entropy_insight(metrics: &NodeMetrics) -> Insight {
+    Insight {
+        category: InsightCategory::HighEntropy,
+        severity: InsightSeverity::Info,
+        module: metrics.name.clone(),
+        message: format!(
+            "Module '{}' has high dependency entropy ({:.2}), \
+             meaning its {} dependencies are spread broadly. \
+             Consider consolidating behind a facade.",
+            metrics.name, metrics.entropy, metrics.fanout
+        ),
+        metrics: InsightMetrics {
+            fanout: Some(metrics.fanout),
+            fanin: None,
+            entropy: Some((metrics.entropy * 100.0).round() / 100.0),
+            scc_id: None,
+            scc_size: None,
+            depth: None,
+        },
+    }
+}
+
+fn sort_insights(insights: &mut [Insight]) {
     insights.sort_by(|a, b| {
         let sev_a = matches!(a.severity, InsightSeverity::Warning);
         let sev_b = matches!(b.severity, InsightSeverity::Warning);
@@ -462,16 +380,16 @@ pub fn generate_insights_with_config(
             .then(a.category.cmp(&b.category))
             .then(a.module.cmp(&b.module))
     });
-
-    insights
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::HighFanoutRule;
     use crate::graph::ir::{EdgeKind, GraphEdge, GraphNode, NodeKind};
     use crate::metrics::scc::find_non_trivial_sccs;
     use crate::metrics::summary::Summary;
+    use globset::Glob;
     use std::path::PathBuf;
 
     fn make_node(name: &str) -> GraphNode {
@@ -703,5 +621,115 @@ mod tests {
                 "Message should contain suggestive words: {msg}"
             );
         }
+    }
+
+    #[test]
+    fn config_aware_defaults_match_default_generation() {
+        let mut graph = DepGraph::new();
+        let hub = graph.add_node(make_node("hub"));
+        for i in 0..8 {
+            let t = graph.add_node(make_node(&format!("t{i}")));
+            graph.add_edge(hub, t, make_edge());
+        }
+        let summary = Summary::from_graph(&graph);
+        let sccs = find_non_trivial_sccs(&graph);
+
+        let direct = generate_insights(&graph, &summary, &sccs);
+        let config_aware =
+            generate_insights_with_config(&graph, &summary, &sccs, &ResolvedRules::default(), &[]);
+
+        assert_eq!(
+            serde_json::to_value(&direct).unwrap(),
+            serde_json::to_value(&config_aware).unwrap()
+        );
+    }
+
+    #[test]
+    fn config_aware_overrides_can_disable_matching_file_paths() {
+        let mut graph = DepGraph::new();
+        let hub = graph.add_node(GraphNode {
+            kind: NodeKind::Module,
+            path: PathBuf::from("src/vendor/hub.rs"),
+            name: "hub".to_string(),
+            span: None,
+            language: None,
+        });
+        for i in 0..8 {
+            let t = graph.add_node(make_node(&format!("t{i}")));
+            graph.add_edge(hub, t, make_edge());
+        }
+        let summary = Summary::from_graph(&graph);
+        let sccs = find_non_trivial_sccs(&graph);
+        let overrides = vec![(
+            Glob::new("**/vendor/**").unwrap().compile_matcher(),
+            OverrideEntry {
+                enabled: false,
+                rules: None,
+            },
+        )];
+
+        let insights = generate_insights_with_config(
+            &graph,
+            &summary,
+            &sccs,
+            &ResolvedRules::default(),
+            &overrides,
+        );
+
+        assert!(
+            insights.is_empty(),
+            "Expected vendor path to be fully skipped"
+        );
+    }
+
+    #[test]
+    fn config_aware_threshold_overrides_change_trigger_behavior() {
+        let mut graph = DepGraph::new();
+        let hub = graph.add_node(GraphNode {
+            kind: NodeKind::Module,
+            path: PathBuf::from("src/legacy/hub.rs"),
+            name: "hub".to_string(),
+            span: None,
+            language: None,
+        });
+        for i in 0..6 {
+            let t = graph.add_node(make_node(&format!("t{i}")));
+            graph.add_edge(hub, t, make_edge());
+        }
+        for i in 0..9 {
+            graph.add_node(make_node(&format!("extra{i}")));
+        }
+        let summary = Summary::from_graph(&graph);
+        let sccs = find_non_trivial_sccs(&graph);
+        let overrides = vec![(
+            Glob::new("src/legacy/**").unwrap().compile_matcher(),
+            OverrideEntry {
+                enabled: true,
+                rules: Some(ResolvedRules {
+                    high_fanout: HighFanoutRule {
+                        enabled: true,
+                        min_fanout: 10,
+                        relative_to_p90: false,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+            },
+        )];
+
+        let insights = generate_insights_with_config(
+            &graph,
+            &summary,
+            &sccs,
+            &ResolvedRules::default(),
+            &overrides,
+        );
+
+        assert!(
+            !insights
+                .iter()
+                .any(|insight| insight.category == InsightCategory::HighFanout),
+            "Expected override threshold to suppress high-fanout insight"
+        );
     }
 }

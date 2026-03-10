@@ -91,3 +91,43 @@ impl ComplexityFrontend for RubyComplexity {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_nested_methods_and_singleton_methods() {
+        let source = br#"
+module Outer
+  class Inner
+    def call(flag)
+      if flag && true
+        work
+      end
+    end
+  end
+
+  def self.build(enabled)
+    rescue_value = 1
+    unless enabled or false
+      rescue_value += 1
+    end
+    rescue
+      nil
+  end
+end
+"#;
+
+        let functions = RubyComplexity.extract_functions(source, Path::new("app.rb"));
+        let names: Vec<_> = functions.iter().map(|f| f.name.as_str()).collect();
+
+        assert!(names.contains(&"Outer.Inner.call"));
+        assert!(names.contains(&"Outer.build"));
+        let call = functions
+            .iter()
+            .find(|f| f.name == "Outer.Inner.call")
+            .unwrap();
+        assert!(call.cyclomatic_complexity >= 2);
+    }
+}

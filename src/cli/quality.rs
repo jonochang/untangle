@@ -128,16 +128,10 @@ fn run_functions(args: &FunctionQualityArgs) -> Result<()> {
         ));
     }
 
-    let path = args
-        .target
-        .path
-        .clone()
-        .unwrap_or_else(|| ".".into());
+    let path = args.target.path.clone().unwrap_or_else(|| ".".into());
     let root = path
         .canonicalize()
-        .map_err(|_| UntangleError::NoFiles {
-            path,
-        })?;
+        .map_err(|_| UntangleError::NoFiles { path })?;
 
     let resolved = resolve_config(&root, &args.to_cli_overrides())?;
     let format = args.format.unwrap_or(resolved.quality_functions.format);
@@ -167,11 +161,7 @@ fn run_functions(args: &FunctionQualityArgs) -> Result<()> {
 }
 
 fn run_project(args: &ProjectQualityArgs) -> Result<()> {
-    let path = args
-        .target
-        .path
-        .clone()
-        .unwrap_or_else(|| ".".into());
+    let path = args.target.path.clone().unwrap_or_else(|| ".".into());
     let root = path
         .canonicalize()
         .map_err(|_| UntangleError::NoFiles { path })?;

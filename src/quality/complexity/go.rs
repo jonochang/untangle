@@ -18,16 +18,23 @@ impl GoComplexity {
 
     fn receiver_type(node: tree_sitter::Node, source: &[u8]) -> Option<String> {
         let recv = node.child_by_field_name("receiver")?;
-        let mut cursor = recv.walk();
-        for child in recv.children(&mut cursor) {
-            match child.kind() {
-                "type_identifier" => return child.utf8_text(source).ok().map(|s| s.to_string()),
+        let mut stack = vec![recv];
+        while let Some(current) = stack.pop() {
+            match current.kind() {
+                "type_identifier" => {
+                    return current.utf8_text(source).ok().map(|s| s.to_string());
+                }
                 "pointer_type" => {
-                    if let Some(inner) = child.child(1) {
+                    if let Some(inner) = current.child(1) {
                         return inner.utf8_text(source).ok().map(|s| s.to_string());
                     }
                 }
-                _ => {}
+                _ => {
+                    let mut cursor = current.walk();
+                    for child in current.children(&mut cursor) {
+                        stack.push(child);
+                    }
+                }
             }
         }
         None
@@ -88,5 +95,45 @@ impl ComplexityFrontend for GoComplexity {
         }
 
         functions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extracts_functions_and_method_receivers() {
+        let source = br#"
+package main
+
+type Service struct{}
+
+func plain(a bool) {
+    if a && true {
+    }
+}
+
+func (s Service) ValueMethod() {
+    plain(true)
+}
+
+func (s *Service) PointerMethod(flag bool) {
+    if flag || false {
+    }
+}
+"#;
+
+        let functions = GoComplexity.extract_functions(source, Path::new("main.go"));
+        let names: Vec<_> = functions.iter().map(|f| f.name.as_str()).collect();
+
+        assert!(names.contains(&"plain"));
+        assert!(names.contains(&"Service.ValueMethod"));
+        assert!(names.contains(&"Service.PointerMethod"));
+        let pointer = functions
+            .iter()
+            .find(|f| f.name == "Service.PointerMethod")
+            .unwrap();
+        assert!(pointer.cyclomatic_complexity >= 2);
     }
 }

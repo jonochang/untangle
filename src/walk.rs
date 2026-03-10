@@ -160,48 +160,10 @@ pub fn discover_files(
 
 /// Auto-detect language by counting file extensions.
 pub fn detect_language(root: &Path) -> Option<Language> {
-    let walker = WalkBuilder::new(root)
-        .hidden(false)
-        .git_ignore(true)
-        .build();
-
-    let mut py_count = 0usize;
-    let mut rb_count = 0usize;
-    let mut go_count = 0usize;
-    let mut rs_count = 0usize;
-
-    for entry in walker.flatten() {
-        let path = entry.path();
-        if !path.is_file() {
-            continue;
-        }
-        match path.extension().and_then(|e| e.to_str()) {
-            Some("py") => py_count += 1,
-            Some("rb") => rb_count += 1,
-            Some("go") => go_count += 1,
-            Some("rs") => rs_count += 1,
-            _ => {}
-        }
-    }
-
-    let max = py_count.max(rb_count).max(go_count).max(rs_count);
-    if max == 0 {
-        return None;
-    }
-
-    if max == py_count {
-        Some(Language::Python)
-    } else if max == go_count {
-        Some(Language::Go)
-    } else if max == rs_count {
-        Some(Language::Rust)
-    } else {
-        Some(Language::Ruby)
-    }
+    dominant_language(&count_languages(root))
 }
 
-/// Auto-detect all languages present in the directory, sorted by file count descending.
-pub fn detect_languages(root: &Path) -> Vec<Language> {
+fn count_languages(root: &Path) -> HashMap<Language, usize> {
     let walker = WalkBuilder::new(root)
         .hidden(false)
         .git_ignore(true)
@@ -218,8 +180,31 @@ pub fn detect_languages(root: &Path) -> Vec<Language> {
             *counts.entry(lang).or_insert(0) += 1;
         }
     }
+    counts
+}
 
-    let mut langs: Vec<(Language, usize)> = counts.into_iter().collect();
+fn dominant_language(counts: &HashMap<Language, usize>) -> Option<Language> {
+    let py_count = counts.get(&Language::Python).copied().unwrap_or(0);
+    let rb_count = counts.get(&Language::Ruby).copied().unwrap_or(0);
+    let go_count = counts.get(&Language::Go).copied().unwrap_or(0);
+    let rs_count = counts.get(&Language::Rust).copied().unwrap_or(0);
+    let max = py_count.max(rb_count).max(go_count).max(rs_count);
+    (max > 0).then_some({
+        if max == py_count {
+            Language::Python
+        } else if max == go_count {
+            Language::Go
+        } else if max == rs_count {
+            Language::Rust
+        } else {
+            Language::Ruby
+        }
+    })
+}
+
+/// Auto-detect all languages present in the directory, sorted by file count descending.
+pub fn detect_languages(root: &Path) -> Vec<Language> {
+    let mut langs: Vec<(Language, usize)> = count_languages(root).into_iter().collect();
     langs.sort_by(|a, b| b.1.cmp(&a.1));
     langs.into_iter().map(|(lang, _)| lang).collect()
 }
@@ -435,6 +420,28 @@ mod tests {
             "Should detect Python files"
         );
         assert!(langs.contains(&Language::Ruby), "Should detect Ruby files");
+    }
+
+    #[test]
+    fn detect_language_empty_returns_none() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(detect_language(tmp.path()), None);
+    }
+
+    #[test]
+    fn detect_language_preserves_current_tie_breaking() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("a.py"), "import os\n").unwrap();
+        std::fs::write(tmp.path().join("b.go"), "package main\n").unwrap();
+        assert_eq!(detect_language(tmp.path()), Some(Language::Python));
+    }
+
+    #[test]
+    fn detect_language_ignores_unrecognized_extensions() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("notes.txt"), "hello\n").unwrap();
+        std::fs::write(tmp.path().join("main.go"), "package main\n").unwrap();
+        assert_eq!(detect_language(tmp.path()), Some(Language::Go));
     }
 
     #[test]

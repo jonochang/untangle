@@ -14,6 +14,89 @@ use provenance::ProvenanceMap;
 use serde::Serialize;
 use std::path::PathBuf;
 
+pub(crate) mod keys {
+    pub const DEFAULTS_LANG: &str = "defaults.lang";
+    pub const DEFAULTS_QUIET: &str = "defaults.quiet";
+    pub const DEFAULTS_INCLUDE_TESTS: &str = "defaults.include_tests";
+    pub const ANALYZE_REPORT_FORMAT: &str = "analyze.report.format";
+    pub const ANALYZE_REPORT_TOP: &str = "analyze.report.top";
+    pub const ANALYZE_REPORT_INSIGHTS: &str = "analyze.report.insights";
+    pub const ANALYZE_REPORT_THRESHOLD_FANOUT: &str = "analyze.report.threshold_fanout";
+    pub const ANALYZE_REPORT_THRESHOLD_SCC: &str = "analyze.report.threshold_scc";
+    pub const ANALYZE_GRAPH_FORMAT: &str = "analyze.graph.format";
+    pub const ANALYZE_ARCHITECTURE_FORMAT: &str = "analyze.architecture.format";
+    pub const ANALYZE_ARCHITECTURE_LEVEL: &str = "analyze.architecture.level";
+    pub const DIFF_FORMAT: &str = "diff.format";
+    pub const QUALITY_FUNCTIONS_FORMAT: &str = "quality.functions.format";
+    pub const QUALITY_FUNCTIONS_TOP: &str = "quality.functions.top";
+    pub const QUALITY_PROJECT_FORMAT: &str = "quality.project.format";
+    pub const QUALITY_PROJECT_TOP: &str = "quality.project.top";
+    pub const SERVICE_GRAPH_FORMAT: &str = "service_graph.format";
+    pub const RULES_HIGH_FANOUT_ENABLED: &str = "rules.high_fanout.enabled";
+    pub const RULES_HIGH_FANOUT_MIN_FANOUT: &str = "rules.high_fanout.min_fanout";
+    pub const RULES_HIGH_FANOUT_RELATIVE_TO_P90: &str = "rules.high_fanout.relative_to_p90";
+    pub const RULES_HIGH_FANOUT_WARNING_MULTIPLIER: &str = "rules.high_fanout.warning_multiplier";
+    pub const RULES_GOD_MODULE_ENABLED: &str = "rules.god_module.enabled";
+    pub const RULES_GOD_MODULE_MIN_FANOUT: &str = "rules.god_module.min_fanout";
+    pub const RULES_GOD_MODULE_MIN_FANIN: &str = "rules.god_module.min_fanin";
+    pub const RULES_GOD_MODULE_RELATIVE_TO_P90: &str = "rules.god_module.relative_to_p90";
+    pub const RULES_CIRCULAR_DEPENDENCY_ENABLED: &str = "rules.circular_dependency.enabled";
+    pub const RULES_CIRCULAR_DEPENDENCY_WARNING_MIN_SIZE: &str =
+        "rules.circular_dependency.warning_min_size";
+    pub const RULES_DEEP_CHAIN_ENABLED: &str = "rules.deep_chain.enabled";
+    pub const RULES_DEEP_CHAIN_ABSOLUTE_DEPTH: &str = "rules.deep_chain.absolute_depth";
+    pub const RULES_DEEP_CHAIN_RELATIVE_MULTIPLIER: &str = "rules.deep_chain.relative_multiplier";
+    pub const RULES_DEEP_CHAIN_RELATIVE_MIN_DEPTH: &str = "rules.deep_chain.relative_min_depth";
+    pub const RULES_HIGH_ENTROPY_ENABLED: &str = "rules.high_entropy.enabled";
+    pub const RULES_HIGH_ENTROPY_MIN_ENTROPY: &str = "rules.high_entropy.min_entropy";
+    pub const RULES_HIGH_ENTROPY_MIN_FANOUT: &str = "rules.high_entropy.min_fanout";
+    pub const GO_EXCLUDE_STDLIB: &str = "go.exclude_stdlib";
+    pub const PYTHON_RESOLVE_RELATIVE: &str = "python.resolve_relative";
+    pub const RUBY_ZEITWERK: &str = "ruby.zeitwerk";
+    pub const RUBY_LOAD_PATH: &str = "ruby.load_path";
+
+    pub const ALL: &[&str] = &[
+        DEFAULTS_LANG,
+        DEFAULTS_QUIET,
+        DEFAULTS_INCLUDE_TESTS,
+        ANALYZE_REPORT_FORMAT,
+        ANALYZE_REPORT_TOP,
+        ANALYZE_REPORT_INSIGHTS,
+        ANALYZE_REPORT_THRESHOLD_FANOUT,
+        ANALYZE_REPORT_THRESHOLD_SCC,
+        ANALYZE_GRAPH_FORMAT,
+        ANALYZE_ARCHITECTURE_FORMAT,
+        ANALYZE_ARCHITECTURE_LEVEL,
+        DIFF_FORMAT,
+        QUALITY_FUNCTIONS_FORMAT,
+        QUALITY_FUNCTIONS_TOP,
+        QUALITY_PROJECT_FORMAT,
+        QUALITY_PROJECT_TOP,
+        SERVICE_GRAPH_FORMAT,
+        RULES_HIGH_FANOUT_ENABLED,
+        RULES_HIGH_FANOUT_MIN_FANOUT,
+        RULES_HIGH_FANOUT_RELATIVE_TO_P90,
+        RULES_HIGH_FANOUT_WARNING_MULTIPLIER,
+        RULES_GOD_MODULE_ENABLED,
+        RULES_GOD_MODULE_MIN_FANOUT,
+        RULES_GOD_MODULE_MIN_FANIN,
+        RULES_GOD_MODULE_RELATIVE_TO_P90,
+        RULES_CIRCULAR_DEPENDENCY_ENABLED,
+        RULES_CIRCULAR_DEPENDENCY_WARNING_MIN_SIZE,
+        RULES_DEEP_CHAIN_ENABLED,
+        RULES_DEEP_CHAIN_ABSOLUTE_DEPTH,
+        RULES_DEEP_CHAIN_RELATIVE_MULTIPLIER,
+        RULES_DEEP_CHAIN_RELATIVE_MIN_DEPTH,
+        RULES_HIGH_ENTROPY_ENABLED,
+        RULES_HIGH_ENTROPY_MIN_ENTROPY,
+        RULES_HIGH_ENTROPY_MIN_FANOUT,
+        GO_EXCLUDE_STDLIB,
+        PYTHON_RESOLVE_RELATIVE,
+        RUBY_ZEITWERK,
+        RUBY_LOAD_PATH,
+    ];
+}
+
 /// Fully resolved configuration — no Option fields.
 #[derive(Debug, Clone)]
 pub struct ResolvedConfig {

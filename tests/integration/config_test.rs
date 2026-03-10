@@ -18,7 +18,9 @@ fn config_show_defaults() {
         .success()
         .stdout(predicate::str::contains("Loaded config files: (none)"))
         .stdout(predicate::str::contains("Resolved settings:"))
-        .stdout(predicate::str::contains("analyze.report.format: json <- default"))
+        .stdout(predicate::str::contains(
+            "analyze.report.format: json <- default",
+        ))
         .stdout(predicate::str::contains("defaults.quiet: false <- default"))
         .stdout(predicate::str::contains(
             "rules.high_fanout.min_fanout: 5 <- default",

@@ -43,6 +43,23 @@ fn diff_go_pass_without_fail_on() {
 }
 
 #[test]
+fn diff_text_output_includes_summary_sections() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .current_dir("tests/fixtures/go/diff_repo")
+        .args([
+            "diff", "--base", "HEAD", "--head", "HEAD", "--lang", "go", "--format", "text",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Untangle Diff Report"))
+        .stdout(predicate::str::contains("Summary"))
+        .stdout(predicate::str::contains("Verdict: Pass"))
+        .stdout(predicate::str::contains("Completed in"));
+}
+
+#[test]
 fn diff_go_fail_on_new_edge_still_passes_without_structural_changes() {
     let output = Command::cargo_bin("untangle")
         .unwrap()
