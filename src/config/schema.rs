@@ -9,6 +9,14 @@ pub struct FileConfig {
     #[serde(default)]
     pub targeting: TargetingFileConfig,
     #[serde(default)]
+    pub analyze: AnalyzeFileConfig,
+    #[serde(default)]
+    pub diff: DiffCommandFileConfig,
+    #[serde(default)]
+    pub quality: QualityFileConfig,
+    #[serde(default)]
+    pub service_graph: ServiceGraphCommandFileConfig,
+    #[serde(default)]
     pub rules: RulesFileConfig,
     #[serde(default)]
     pub fail_on: FailOnFileConfig,
@@ -54,6 +62,65 @@ pub struct DefaultsFileConfig {
     // Backward compat: old format had exclude here
     #[serde(default)]
     pub exclude: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AnalyzeFileConfig {
+    #[serde(default)]
+    pub report: AnalyzeReportFileConfig,
+    #[serde(default)]
+    pub graph: AnalyzeGraphFileConfig,
+    #[serde(default)]
+    pub architecture: AnalyzeArchitectureFileConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AnalyzeReportFileConfig {
+    pub format: Option<String>,
+    pub top: Option<usize>,
+    pub insights: Option<String>,
+    pub threshold_fanout: Option<usize>,
+    pub threshold_scc: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AnalyzeGraphFileConfig {
+    pub format: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AnalyzeArchitectureFileConfig {
+    pub format: Option<String>,
+    pub level: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct DiffCommandFileConfig {
+    pub format: Option<String>,
+    #[serde(default)]
+    pub fail_on: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct QualityFileConfig {
+    #[serde(default)]
+    pub functions: QualityCommandFileConfig,
+    #[serde(default)]
+    pub project: QualityCommandFileConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct QualityCommandFileConfig {
+    pub format: Option<String>,
+    pub top: Option<usize>,
+    pub metric: Option<String>,
+    pub min_cc: Option<usize>,
+    pub min_score: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ServiceGraphCommandFileConfig {
+    pub format: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -157,6 +224,51 @@ impl FileConfig {
         // [defaults].exclude -> [targeting].exclude (if targeting.exclude is empty)
         if self.targeting.exclude.is_empty() && !self.defaults.exclude.is_empty() {
             self.targeting.exclude = self.defaults.exclude.clone();
+        }
+
+        // [defaults].format -> command-specific defaults when missing
+        if let Some(ref format) = self.defaults.format {
+            if self.analyze.report.format.is_none() {
+                self.analyze.report.format = Some(format.clone());
+            }
+            if self.diff.format.is_none() {
+                self.diff.format = Some(format.clone());
+            }
+            if self.quality.functions.format.is_none() {
+                self.quality.functions.format = Some(format.clone());
+            }
+            if self.quality.project.format.is_none() {
+                self.quality.project.format = Some(format.clone());
+            }
+            if self.service_graph.format.is_none() {
+                self.service_graph.format = Some(format.clone());
+            }
+        }
+
+        // [defaults].top -> report/functions/project top defaults when missing
+        if let Some(top) = self.defaults.top {
+            if self.analyze.report.top.is_none() {
+                self.analyze.report.top = Some(top);
+            }
+            if self.quality.functions.top.is_none() {
+                self.quality.functions.top = Some(top);
+            }
+            if self.quality.project.top.is_none() {
+                self.quality.project.top = Some(top);
+            }
+        }
+
+        // [defaults].no_insights -> analyze.report.insights
+        if let Some(no_insights) = self.defaults.no_insights {
+            if self.analyze.report.insights.is_none() {
+                self.analyze.report.insights =
+                    Some(if no_insights { "off" } else { "auto" }.to_string());
+            }
+        }
+
+        // legacy [fail_on].conditions -> [diff].fail_on when missing
+        if self.diff.fail_on.is_empty() && !self.fail_on.conditions.is_empty() {
+            self.diff.fail_on = self.fail_on.conditions.clone();
         }
 
         // [thresholds].max_fanout -> [rules.high_fanout].min_fanout

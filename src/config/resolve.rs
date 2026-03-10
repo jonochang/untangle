@@ -2,11 +2,16 @@ use crate::config::provenance::{ProvenanceMap, Source};
 use crate::config::schema::FileConfig;
 use crate::config::{
     CircularDependencyRule, DeepChainRule, GodModuleRule, HighEntropyRule, HighFanoutRule,
-    OverrideEntry, ResolvedConfig, ResolvedGoConfig, ResolvedPythonConfig, ResolvedRubyConfig,
-    ResolvedRules, ResolvedService,
+    InsightsConfig, OverrideEntry, ResolvedAnalyzeReportConfig, ResolvedArchitectureConfig,
+    ResolvedConfig, ResolvedDiffConfig, ResolvedGoConfig, ResolvedGraphConfig,
+    ResolvedPythonConfig, ResolvedQualityConfig, ResolvedRubyConfig, ResolvedRules,
+    ResolvedService, ResolvedServiceGraphConfig,
 };
 use crate::errors::{Result, UntangleError};
-use crate::output::OutputFormat;
+use crate::formats::{
+    AnalyzeReportFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
+    ServiceGraphFormat,
+};
 use crate::walk::Language;
 use globset::Glob;
 use std::path::{Path, PathBuf};
@@ -15,11 +20,8 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Default)]
 pub struct CliOverrides {
     pub lang: Option<Language>,
-    pub format: Option<OutputFormat>,
     pub quiet: bool,
-    pub top: Option<usize>,
     pub include_tests: bool,
-    pub no_insights: bool,
     pub include: Vec<String>,
     pub exclude: Vec<String>,
     pub fail_on: Vec<String>,
@@ -40,14 +42,18 @@ pub fn resolve_config(working_dir: &Path, cli: &CliOverrides) -> Result<Resolved
     // 1. Start with built-in defaults
     let mut config = ResolvedConfig {
         lang: None,
-        format: "json".to_string(),
         quiet: false,
-        top: None,
         include_tests: false,
-        no_insights: false,
         include: Vec::new(),
         exclude: Vec::new(),
         ignore_patterns: Vec::new(),
+        analyze_report: ResolvedAnalyzeReportConfig::default(),
+        analyze_graph: ResolvedGraphConfig::default(),
+        analyze_architecture: ResolvedArchitectureConfig::default(),
+        diff: ResolvedDiffConfig::default(),
+        quality_functions: ResolvedQualityConfig::default(),
+        quality_project: ResolvedQualityConfig::default(),
+        service_graph: ResolvedServiceGraphConfig::default(),
         rules: ResolvedRules::default(),
         fail_on: Vec::new(),
         go: ResolvedGoConfig::default(),
@@ -141,11 +147,22 @@ fn find_project_config(start: &Path) -> Option<PathBuf> {
 fn set_all_default_provenance(prov: &mut ProvenanceMap) {
     let defaults = [
         "defaults.lang",
-        "defaults.format",
         "defaults.quiet",
-        "defaults.top",
         "defaults.include_tests",
-        "defaults.no_insights",
+        "analyze.report.format",
+        "analyze.report.top",
+        "analyze.report.insights",
+        "analyze.report.threshold_fanout",
+        "analyze.report.threshold_scc",
+        "analyze.graph.format",
+        "analyze.architecture.format",
+        "analyze.architecture.level",
+        "diff.format",
+        "quality.functions.format",
+        "quality.functions.top",
+        "quality.project.format",
+        "quality.project.top",
+        "service_graph.format",
         "rules.high_fanout.enabled",
         "rules.high_fanout.min_fanout",
         "rules.high_fanout.relative_to_p90",
@@ -173,6 +190,65 @@ fn set_all_default_provenance(prov: &mut ProvenanceMap) {
     }
 }
 
+fn parse_analyze_report_format(value: &str) -> Option<AnalyzeReportFormat> {
+    match value {
+        "json" => Some(AnalyzeReportFormat::Json),
+        "text" => Some(AnalyzeReportFormat::Text),
+        "sarif" => Some(AnalyzeReportFormat::Sarif),
+        _ => None,
+    }
+}
+
+fn parse_graph_format(value: &str) -> Option<GraphFormat> {
+    match value {
+        "json" => Some(GraphFormat::Json),
+        "dot" => Some(GraphFormat::Dot),
+        _ => None,
+    }
+}
+
+fn parse_architecture_format(value: &str) -> Option<ArchitectureFormat> {
+    match value {
+        "json" => Some(ArchitectureFormat::Json),
+        "dot" => Some(ArchitectureFormat::Dot),
+        _ => None,
+    }
+}
+
+fn parse_diff_format(value: &str) -> Option<DiffFormat> {
+    match value {
+        "json" => Some(DiffFormat::Json),
+        "text" => Some(DiffFormat::Text),
+        _ => None,
+    }
+}
+
+fn parse_quality_format(value: &str) -> Option<QualityFormat> {
+    match value {
+        "json" => Some(QualityFormat::Json),
+        "text" => Some(QualityFormat::Text),
+        _ => None,
+    }
+}
+
+fn parse_service_graph_format(value: &str) -> Option<ServiceGraphFormat> {
+    match value {
+        "json" => Some(ServiceGraphFormat::Json),
+        "text" => Some(ServiceGraphFormat::Text),
+        "dot" => Some(ServiceGraphFormat::Dot),
+        _ => None,
+    }
+}
+
+fn parse_insights_mode(value: &str) -> Option<InsightsConfig> {
+    match value {
+        "auto" => Some(InsightsConfig::Auto),
+        "on" => Some(InsightsConfig::On),
+        "off" => Some(InsightsConfig::Off),
+        _ => None,
+    }
+}
+
 fn apply_file_config(
     config: &mut ResolvedConfig,
     file: &FileConfig,
@@ -186,25 +262,87 @@ fn apply_file_config(
             prov.set("defaults.lang", source.clone());
         }
     }
-    if let Some(ref format) = file.defaults.format {
-        config.format = format.clone();
-        prov.set("defaults.format", source.clone());
-    }
     if let Some(quiet) = file.defaults.quiet {
         config.quiet = quiet;
         prov.set("defaults.quiet", source.clone());
-    }
-    if let Some(top) = file.defaults.top {
-        config.top = Some(top);
-        prov.set("defaults.top", source.clone());
     }
     if let Some(include_tests) = file.defaults.include_tests {
         config.include_tests = include_tests;
         prov.set("defaults.include_tests", source.clone());
     }
-    if let Some(no_insights) = file.defaults.no_insights {
-        config.no_insights = no_insights;
-        prov.set("defaults.no_insights", source.clone());
+
+    // Command defaults
+    if let Some(ref format) = file.analyze.report.format {
+        if let Some(parsed) = parse_analyze_report_format(format) {
+            config.analyze_report.format = parsed;
+            prov.set("analyze.report.format", source.clone());
+        }
+    }
+    if let Some(top) = file.analyze.report.top {
+        config.analyze_report.top = Some(top);
+        prov.set("analyze.report.top", source.clone());
+    }
+    if let Some(ref insights) = file.analyze.report.insights {
+        if let Some(parsed) = parse_insights_mode(insights) {
+            config.analyze_report.insights = parsed;
+            prov.set("analyze.report.insights", source.clone());
+        }
+    }
+    if let Some(threshold_fanout) = file.analyze.report.threshold_fanout {
+        config.analyze_report.threshold_fanout = Some(threshold_fanout);
+        prov.set("analyze.report.threshold_fanout", source.clone());
+    }
+    if let Some(threshold_scc) = file.analyze.report.threshold_scc {
+        config.analyze_report.threshold_scc = Some(threshold_scc);
+        prov.set("analyze.report.threshold_scc", source.clone());
+    }
+    if let Some(ref format) = file.analyze.graph.format {
+        if let Some(parsed) = parse_graph_format(format) {
+            config.analyze_graph.format = parsed;
+            prov.set("analyze.graph.format", source.clone());
+        }
+    }
+    if let Some(ref format) = file.analyze.architecture.format {
+        if let Some(parsed) = parse_architecture_format(format) {
+            config.analyze_architecture.format = parsed;
+            prov.set("analyze.architecture.format", source.clone());
+        }
+    }
+    if let Some(level) = file.analyze.architecture.level {
+        config.analyze_architecture.level = level.max(1);
+        prov.set("analyze.architecture.level", source.clone());
+    }
+    if let Some(ref format) = file.diff.format {
+        if let Some(parsed) = parse_diff_format(format) {
+            config.diff.format = parsed;
+            prov.set("diff.format", source.clone());
+        }
+    }
+    if let Some(ref format) = file.quality.functions.format {
+        if let Some(parsed) = parse_quality_format(format) {
+            config.quality_functions.format = parsed;
+            prov.set("quality.functions.format", source.clone());
+        }
+    }
+    if let Some(top) = file.quality.functions.top {
+        config.quality_functions.top = Some(top);
+        prov.set("quality.functions.top", source.clone());
+    }
+    if let Some(ref format) = file.quality.project.format {
+        if let Some(parsed) = parse_quality_format(format) {
+            config.quality_project.format = parsed;
+            prov.set("quality.project.format", source.clone());
+        }
+    }
+    if let Some(top) = file.quality.project.top {
+        config.quality_project.top = Some(top);
+        prov.set("quality.project.top", source.clone());
+    }
+    if let Some(ref format) = file.service_graph.format {
+        if let Some(parsed) = parse_service_graph_format(format) {
+            config.service_graph.format = parsed;
+            prov.set("service_graph.format", source.clone());
+        }
     }
 
     // Targeting
@@ -233,7 +371,9 @@ fn apply_file_config(
     }
 
     // Fail on
-    if !file.fail_on.conditions.is_empty() {
+    if !file.diff.fail_on.is_empty() {
+        config.fail_on = file.diff.fail_on.clone();
+    } else if !file.fail_on.conditions.is_empty() {
         config.fail_on = file.fail_on.conditions.clone();
     }
 
@@ -494,10 +634,6 @@ fn apply_high_entropy_override(
 }
 
 fn apply_env_vars(config: &mut ResolvedConfig, prov: &mut ProvenanceMap) {
-    if let Ok(val) = std::env::var("UNTANGLE_FORMAT") {
-        config.format = val;
-        prov.set("defaults.format", Source::EnvVar("UNTANGLE_FORMAT".into()));
-    }
     if let Ok(val) = std::env::var("UNTANGLE_LANG") {
         if let Ok(l) = val.parse::<Language>() {
             config.lang = Some(l);
@@ -507,12 +643,6 @@ fn apply_env_vars(config: &mut ResolvedConfig, prov: &mut ProvenanceMap) {
     if let Ok(val) = std::env::var("UNTANGLE_QUIET") {
         config.quiet = val == "1" || val.eq_ignore_ascii_case("true");
         prov.set("defaults.quiet", Source::EnvVar("UNTANGLE_QUIET".into()));
-    }
-    if let Ok(val) = std::env::var("UNTANGLE_TOP") {
-        if let Ok(n) = val.parse::<usize>() {
-            config.top = Some(n);
-            prov.set("defaults.top", Source::EnvVar("UNTANGLE_TOP".into()));
-        }
     }
     if let Ok(val) = std::env::var("UNTANGLE_INCLUDE_TESTS") {
         config.include_tests = val == "1" || val.eq_ignore_ascii_case("true");
@@ -537,30 +667,15 @@ fn apply_cli_overrides(config: &mut ResolvedConfig, cli: &CliOverrides, prov: &m
         config.lang = Some(lang);
         prov.set("defaults.lang", Source::CliFlag("--lang".into()));
     }
-    if let Some(format) = cli.format {
-        config.format = format.to_string();
-        prov.set("defaults.format", Source::CliFlag("--format".into()));
-    }
     if cli.quiet {
         config.quiet = true;
         prov.set("defaults.quiet", Source::CliFlag("--quiet".into()));
-    }
-    if let Some(top) = cli.top {
-        config.top = Some(top);
-        prov.set("defaults.top", Source::CliFlag("--top".into()));
     }
     if cli.include_tests {
         config.include_tests = true;
         prov.set(
             "defaults.include_tests",
             Source::CliFlag("--include-tests".into()),
-        );
-    }
-    if cli.no_insights {
-        config.no_insights = true;
-        prov.set(
-            "defaults.no_insights",
-            Source::CliFlag("--no-insights".into()),
         );
     }
     if !cli.include.is_empty() {
@@ -574,8 +689,13 @@ fn apply_cli_overrides(config: &mut ResolvedConfig, cli: &CliOverrides, prov: &m
     }
     if let Some(threshold_fanout) = cli.threshold_fanout {
         config.rules.high_fanout.min_fanout = threshold_fanout;
+        config.analyze_report.threshold_fanout = Some(threshold_fanout);
         prov.set(
             "rules.high_fanout.min_fanout",
+            Source::CliFlag("--threshold-fanout".into()),
+        );
+        prov.set(
+            "analyze.report.threshold_fanout",
             Source::CliFlag("--threshold-fanout".into()),
         );
     }
@@ -585,17 +705,11 @@ fn apply_cli_overrides(config: &mut ResolvedConfig, cli: &CliOverrides, prov: &m
             "rules.circular_dependency.warning_min_size",
             Source::CliFlag("--threshold-scc".into()),
         );
-    }
-}
-
-impl std::fmt::Display for OutputFormat {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OutputFormat::Json => write!(f, "json"),
-            OutputFormat::Text => write!(f, "text"),
-            OutputFormat::Dot => write!(f, "dot"),
-            OutputFormat::Sarif => write!(f, "sarif"),
-        }
+        config.analyze_report.threshold_scc = Some(threshold_scc);
+        prov.set(
+            "analyze.report.threshold_scc",
+            Source::CliFlag("--threshold-scc".into()),
+        );
     }
 }
 
@@ -610,11 +724,11 @@ mod tests {
         let cli = CliOverrides::default();
         let config = resolve_config(&dir, &cli).unwrap();
 
-        assert_eq!(config.format, "json");
+        assert_eq!(config.analyze_report.format, AnalyzeReportFormat::Json);
         assert!(!config.quiet);
-        assert!(config.top.is_none());
+        assert!(config.analyze_report.top.is_none());
         assert!(!config.include_tests);
-        assert!(!config.no_insights);
+        assert_eq!(config.analyze_report.insights, InsightsConfig::Auto);
         assert!(config.rules.high_fanout.enabled);
         assert_eq!(config.rules.high_fanout.min_fanout, 5);
         assert!(config.go.exclude_stdlib);
@@ -625,28 +739,16 @@ mod tests {
     fn cli_override_takes_precedence() {
         let dir = PathBuf::from("/nonexistent");
         let cli = CliOverrides {
-            format: Some(OutputFormat::Text),
             quiet: true,
-            top: Some(10),
             include_tests: true,
-            no_insights: true,
             threshold_fanout: Some(20),
             ..Default::default()
         };
         let config = resolve_config(&dir, &cli).unwrap();
 
-        assert_eq!(config.format, "text");
         assert!(config.quiet);
-        assert_eq!(config.top, Some(10));
         assert!(config.include_tests);
-        assert!(config.no_insights);
         assert_eq!(config.rules.high_fanout.min_fanout, 20);
-
-        // Verify provenance
-        assert!(matches!(
-            config.provenance.get("defaults.format"),
-            Some(Source::CliFlag(_))
-        ));
     }
 
     #[test]
@@ -670,9 +772,9 @@ min_fanout = 10
         let cli = CliOverrides::default();
         let config = resolve_config(tmp.path(), &cli).unwrap();
 
-        assert_eq!(config.format, "text");
+        assert_eq!(config.analyze_report.format, AnalyzeReportFormat::Text);
         assert!(config.quiet);
-        assert_eq!(config.top, Some(15));
+        assert_eq!(config.analyze_report.top, Some(15));
         assert_eq!(config.rules.high_fanout.min_fanout, 10);
         assert_eq!(config.loaded_files.len(), 1);
     }
@@ -690,17 +792,10 @@ format = "text"
         )
         .unwrap();
 
-        let cli = CliOverrides {
-            format: Some(OutputFormat::Json),
-            ..Default::default()
-        };
+        let cli = CliOverrides::default();
         let config = resolve_config(tmp.path(), &cli).unwrap();
 
-        assert_eq!(config.format, "json");
-        assert!(matches!(
-            config.provenance.get("defaults.format"),
-            Some(Source::CliFlag(_))
-        ));
+        assert_eq!(config.analyze_report.format, AnalyzeReportFormat::Text);
     }
 
     #[test]

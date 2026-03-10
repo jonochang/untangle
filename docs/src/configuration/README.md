@@ -19,16 +19,19 @@ Create a `.untangle.toml` in your project root:
 ```toml
 [defaults]
 lang = "python"
-format = "text"
+quiet = false
 
 [targeting]
 exclude = ["vendor/**", "**/test/**"]
 
+[analyze.report]
+format = "text"
+
 [rules.high_fanout]
 min_fanout = 10
 
-[fail_on]
-conditions = ["fanout-increase", "new-scc"]
+[diff]
+fail_on = ["fanout-increase", "new-scc"]
 ```
 
 ## Sections

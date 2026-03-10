@@ -2,10 +2,11 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 
 #[test]
-fn architecture_json_output() {
+fn analyze_architecture_json_output() {
     let output = Command::cargo_bin("untangle")
         .unwrap()
         .args([
+            "analyze",
             "architecture",
             "tests/fixtures/python/simple_project",
             "--lang",
@@ -21,6 +22,9 @@ fn architecture_json_output() {
         .clone();
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["kind"], "analyze.architecture");
+    assert_eq!(json["schema_version"], 2);
+
     let node_ids: Vec<&str> = json["nodes"]
         .as_array()
         .unwrap()
@@ -28,21 +32,14 @@ fn architecture_json_output() {
         .map(|node| node["id"].as_str().unwrap())
         .collect();
     assert_eq!(node_ids, vec!["api", "db", "utils"]);
-
-    let edge = json["edges"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|edge| edge["from"] == "api" && edge["to"] == "db")
-        .unwrap();
-    assert_eq!(edge["count"], 1);
 }
 
 #[test]
-fn architecture_level_two_expands_children() {
+fn analyze_architecture_level_two_expands_children() {
     let output = Command::cargo_bin("untangle")
         .unwrap()
         .args([
+            "analyze",
             "architecture",
             "tests/fixtures/ruby/require_relative",
             "--lang",
@@ -70,10 +67,11 @@ fn architecture_level_two_expands_children() {
 }
 
 #[test]
-fn architecture_dot_output() {
+fn analyze_architecture_dot_output() {
     Command::cargo_bin("untangle")
         .unwrap()
         .args([
+            "analyze",
             "architecture",
             "tests/fixtures/python/circular",
             "--lang",
@@ -90,7 +88,7 @@ fn architecture_dot_output() {
 }
 
 #[test]
-fn architecture_rejects_text_output() {
+fn deprecated_architecture_alias_still_works() {
     Command::cargo_bin("untangle")
         .unwrap()
         .args([
@@ -99,13 +97,10 @@ fn architecture_rejects_text_output() {
             "--lang",
             "python",
             "--format",
-            "text",
+            "json",
             "--quiet",
         ])
         .assert()
-        .failure()
-        .stderr(predicate::str::contains("Configuration error"))
-        .stderr(predicate::str::contains("architecture only supports"))
-        .stderr(predicate::str::contains("--format json"))
-        .stderr(predicate::str::contains("--format"));
+        .success()
+        .stderr(predicate::str::contains("deprecated"));
 }

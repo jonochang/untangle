@@ -4,6 +4,7 @@ mod architecture;
 mod cli;
 mod config;
 mod errors;
+mod formats;
 mod git;
 mod graph;
 mod insights;

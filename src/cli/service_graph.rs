@@ -1,7 +1,8 @@
+use crate::cli::common::resolve_path;
 use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::config::ResolvedService;
 use crate::errors::{Result, UntangleError};
-use crate::output::OutputFormat;
+use crate::formats::ServiceGraphFormat;
 use crate::parse::common::SourceLocation;
 use crate::parse::graphql;
 use crate::parse::graphql_client;
@@ -15,12 +16,12 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Args)]
 pub struct ServiceGraphArgs {
-    /// Path to the project root
-    pub path: PathBuf,
+    /// Path to the project root (defaults to current directory)
+    pub path: Option<PathBuf>,
 
     /// Output format (json, text, dot)
-    #[arg(long, default_value = "json")]
-    pub format: OutputFormat,
+    #[arg(long)]
+    pub format: Option<ServiceGraphFormat>,
 }
 
 /// A cross-service dependency edge.
@@ -51,13 +52,14 @@ pub struct ServiceInfo {
 }
 
 pub fn run(args: &ServiceGraphArgs) -> Result<()> {
-    let root = args
-        .path
+    let path = resolve_path(&args.path);
+    let root = path
         .canonicalize()
         .map_err(|e| UntangleError::Io(std::io::Error::new(e.kind(), e.to_string())))?;
 
     let cli = CliOverrides::default();
     let config = resolve_config(&root, &cli)?;
+    let format = args.format.unwrap_or(config.service_graph.format);
 
     if config.services.is_empty() {
         return Err(UntangleError::Config(
@@ -185,21 +187,24 @@ pub fn run(args: &ServiceGraphArgs) -> Result<()> {
         cross_service_edges: edges,
     };
 
-    match args.format {
-        OutputFormat::Json => {
-            serde_json::to_writer_pretty(std::io::stdout(), &output)?;
+    match format {
+        ServiceGraphFormat::Json => {
+            serde_json::to_writer_pretty(
+                std::io::stdout(),
+                &serde_json::json!({
+                    "kind": "service_graph",
+                    "schema_version": 2,
+                    "services": output.services,
+                    "cross_service_edges": output.cross_service_edges,
+                }),
+            )?;
             println!();
         }
-        OutputFormat::Text => {
+        ServiceGraphFormat::Text => {
             write_service_graph_text(&output);
         }
-        OutputFormat::Dot => {
+        ServiceGraphFormat::Dot => {
             write_service_graph_dot(&output);
-        }
-        OutputFormat::Sarif => {
-            return Err(UntangleError::Config(
-                "SARIF format is not supported for service-graph".to_string(),
-            ));
         }
     }
 

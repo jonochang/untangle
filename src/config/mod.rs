@@ -5,6 +5,10 @@ pub mod resolve;
 pub mod schema;
 pub mod show;
 
+use crate::formats::{
+    AnalyzeReportFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
+    ServiceGraphFormat,
+};
 use crate::walk::Language;
 use provenance::ProvenanceMap;
 use serde::Serialize;
@@ -15,16 +19,22 @@ use std::path::PathBuf;
 pub struct ResolvedConfig {
     // Operational
     pub lang: Option<Language>,
-    pub format: String,
     pub quiet: bool,
-    pub top: Option<usize>,
     pub include_tests: bool,
-    pub no_insights: bool,
 
     // Targeting
     pub include: Vec<String>,
     pub exclude: Vec<String>,
     pub ignore_patterns: Vec<String>,
+
+    // Command defaults
+    pub analyze_report: ResolvedAnalyzeReportConfig,
+    pub analyze_graph: ResolvedGraphConfig,
+    pub analyze_architecture: ResolvedArchitectureConfig,
+    pub diff: ResolvedDiffConfig,
+    pub quality_functions: ResolvedQualityConfig,
+    pub quality_project: ResolvedQualityConfig,
+    pub service_graph: ResolvedServiceGraphConfig,
 
     // Ruleset
     pub rules: ResolvedRules,
@@ -46,6 +56,104 @@ pub struct ResolvedConfig {
     // Provenance
     pub provenance: ProvenanceMap,
     pub loaded_files: Vec<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedAnalyzeReportConfig {
+    pub format: AnalyzeReportFormat,
+    pub top: Option<usize>,
+    pub insights: InsightsConfig,
+    pub threshold_fanout: Option<usize>,
+    pub threshold_scc: Option<usize>,
+}
+
+impl Default for ResolvedAnalyzeReportConfig {
+    fn default() -> Self {
+        Self {
+            format: AnalyzeReportFormat::Json,
+            top: None,
+            insights: InsightsConfig::Auto,
+            threshold_fanout: None,
+            threshold_scc: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedGraphConfig {
+    pub format: GraphFormat,
+}
+
+impl Default for ResolvedGraphConfig {
+    fn default() -> Self {
+        Self {
+            format: GraphFormat::Dot,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedArchitectureConfig {
+    pub format: ArchitectureFormat,
+    pub level: usize,
+}
+
+impl Default for ResolvedArchitectureConfig {
+    fn default() -> Self {
+        Self {
+            format: ArchitectureFormat::Dot,
+            level: 1,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedDiffConfig {
+    pub format: DiffFormat,
+}
+
+impl Default for ResolvedDiffConfig {
+    fn default() -> Self {
+        Self {
+            format: DiffFormat::Json,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedQualityConfig {
+    pub format: QualityFormat,
+    pub top: Option<usize>,
+}
+
+impl Default for ResolvedQualityConfig {
+    fn default() -> Self {
+        Self {
+            format: QualityFormat::Json,
+            top: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedServiceGraphConfig {
+    pub format: ServiceGraphFormat,
+}
+
+impl Default for ResolvedServiceGraphConfig {
+    fn default() -> Self {
+        Self {
+            format: ServiceGraphFormat::Json,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum InsightsConfig {
+    Auto,
+    On,
+    Off,
 }
 
 /// Resolved service declaration for cross-service dependency tracking.

@@ -7,14 +7,14 @@ The command scans each service's source code for GraphQL and REST client usage, 
 ## Usage
 
 ```bash
-untangle service-graph <PATH> [--format json|text|dot]
+untangle service-graph [PATH] [--format json|text|dot]
 ```
 
 ## Arguments
 
 | Argument | Description |
 |----------|-------------|
-| `PATH` | Path to the project root (required) |
+| `PATH` | Path to the project root (defaults to current directory) |
 
 ## Options
 
@@ -52,6 +52,8 @@ The output contains:
 
 - `services`: the configured services with file counts
 - `cross_service_edges`: edges with `kind` (`graphql_query` or `rest_call`), optional `operation`, and `source_locations`
+- `kind`: always `service_graph` in JSON output
+- `schema_version`: currently `2` in JSON output
 
 See [JSON Format](../output-formats/json.md) for the schema.
 

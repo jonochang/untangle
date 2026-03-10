@@ -1,17 +1,20 @@
+use crate::cli::architecture;
+use crate::cli::common::{RuntimeArgs, TargetArgs};
+use crate::cli::graph;
 use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::errors::{Result, UntangleError};
+use crate::formats::AnalyzeReportFormat;
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::metrics::scc::find_non_trivial_sccs;
 use crate::metrics::summary::Summary;
 use crate::output::json::{LanguageStats, Metadata};
-use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, RawImport, SourceLocation};
 use crate::parse::factory;
 use crate::parse::go::GoFrontend;
 use crate::parse::rust::RustFrontend;
 use crate::parse::ParseFrontend;
 use crate::walk::{self, Language};
-use clap::Args;
+use clap::{Args, Subcommand, ValueEnum};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -20,16 +23,38 @@ use std::time::Instant;
 
 #[derive(Debug, Args)]
 pub struct AnalyzeArgs {
-    /// Path to analyze
-    pub path: PathBuf,
+    #[command(subcommand)]
+    pub command: AnalyzeCommand,
+}
 
-    /// Language to analyze
-    #[arg(long, value_parser = parse_language)]
-    pub lang: Option<Language>,
+#[derive(Debug, Subcommand)]
+pub enum AnalyzeCommand {
+    /// Generate the default structural report
+    Report(ReportArgs),
+    /// Export the raw dependency graph
+    Graph(graph::GraphArgs),
+    /// Export the projected architecture view
+    Architecture(architecture::ArchitectureArgs),
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum InsightsMode {
+    Auto,
+    On,
+    Off,
+}
+
+#[derive(Debug, Args)]
+pub struct ReportArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    #[command(flatten)]
+    pub runtime: RuntimeArgs,
 
     /// Output format
     #[arg(long)]
-    pub format: Option<OutputFormat>,
+    pub format: Option<AnalyzeReportFormat>,
 
     /// Number of top hotspots to report
     #[arg(long)]
@@ -43,47 +68,28 @@ pub struct AnalyzeArgs {
     #[arg(long)]
     pub threshold_scc: Option<usize>,
 
-    /// Include test files (Go: *_test.go)
-    #[arg(long)]
-    pub include_tests: bool,
+    /// Insight rendering mode
+    #[arg(long, default_value = "auto")]
+    pub insights: InsightsMode,
 
-    /// Include glob patterns
-    #[arg(long)]
-    pub include: Vec<String>,
-
-    /// Exclude glob patterns
-    #[arg(long)]
-    pub exclude: Vec<String>,
-
-    /// Suppress progress output
-    #[arg(long)]
-    pub quiet: bool,
-
-    /// Suppress insights from output
-    #[arg(long)]
+    /// Deprecated alias for `--insights off`
+    #[arg(long, hide = true)]
     pub no_insights: bool,
 }
 
-impl AnalyzeArgs {
+impl ReportArgs {
     fn to_cli_overrides(&self) -> CliOverrides {
         CliOverrides {
-            lang: self.lang,
-            format: self.format,
-            quiet: self.quiet,
-            top: self.top,
-            include_tests: self.include_tests,
-            no_insights: self.no_insights,
-            include: self.include.clone(),
-            exclude: self.exclude.clone(),
+            lang: self.target.lang,
+            quiet: self.runtime.quiet,
+            include_tests: self.target.include_tests,
+            include: self.target.include.clone(),
+            exclude: self.target.exclude.clone(),
             threshold_fanout: self.threshold_fanout,
             threshold_scc: self.threshold_scc,
             ..Default::default()
         }
     }
-}
-
-fn parse_language(s: &str) -> std::result::Result<Language, String> {
-    s.parse()
 }
 
 /// Result of parsing a single file (collected from parallel workers).
@@ -95,13 +101,25 @@ struct FileParseResult {
 }
 
 pub fn run(args: &AnalyzeArgs) -> Result<()> {
-    let start = Instant::now();
+    match &args.command {
+        AnalyzeCommand::Report(args) => run_report(args),
+        AnalyzeCommand::Graph(args) => graph::run(args),
+        AnalyzeCommand::Architecture(args) => architecture::run(args),
+    }
+}
 
-    let root = args
+fn run_report(args: &ReportArgs) -> Result<()> {
+    let start = Instant::now();
+    let path = args
+        .target
         .path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("."));
+
+    let root = path
         .canonicalize()
         .map_err(|_| UntangleError::NoFiles {
-            path: args.path.clone(),
+            path,
         })?;
 
     // Resolve config
@@ -109,7 +127,9 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     let config = resolve_config(&root, &overrides)?;
 
     // Determine format from resolved config
-    let format: OutputFormat = config.format.parse().unwrap_or_default();
+    let format = args
+        .format
+        .unwrap_or(config.analyze_report.format);
 
     // Merge ignore_patterns into exclude list
     let mut exclude = config.exclude.clone();
@@ -370,7 +390,14 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     let summary = Summary::from_graph(&graph);
     let sccs = find_non_trivial_sccs(&graph);
 
-    let insights = if config.no_insights {
+    let insights_enabled = if args.no_insights {
+        false
+    } else {
+        !matches!(args.insights, InsightsMode::Off)
+            && !matches!(config.analyze_report.insights, crate::config::InsightsConfig::Off)
+    };
+
+    let insights = if !insights_enabled {
         None
     } else {
         Some(crate::insights::generate_insights_with_config(
@@ -455,52 +482,43 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
     };
 
     let mut stdout = std::io::stdout();
+    let top = args.top.or(config.analyze_report.top);
 
     match format {
-        OutputFormat::Json => {
+        AnalyzeReportFormat::Json => {
             crate::output::json::write_analyze_json(
                 &mut stdout,
                 &graph,
                 &summary,
                 &sccs,
                 metadata,
-                config.top,
+                top,
                 insights,
             )?;
         }
-        OutputFormat::Text => {
+        AnalyzeReportFormat::Text => {
             crate::output::text::write_analyze_text(
                 &mut stdout,
                 &graph,
                 &summary,
                 &sccs,
                 &metadata,
-                config.top,
+                top,
                 insights.as_deref(),
             )?;
         }
-        OutputFormat::Dot => {
-            crate::output::dot::write_dot(&mut stdout, &graph)?;
-            if !config.quiet {
-                eprintln!(
-                    "Completed in {:.2}s ({:.0} modules/sec)",
-                    elapsed_ms as f64 / 1000.0,
-                    modules_per_second
-                );
-            }
-        }
-        OutputFormat::Sarif => {
+        AnalyzeReportFormat::Sarif => {
             crate::output::sarif::write_sarif(
                 &mut stdout,
                 &graph,
                 &sccs,
                 &metadata,
-                args.threshold_fanout,
+                args.threshold_fanout.or(config.analyze_report.threshold_fanout),
             )?;
         }
     }
 
-    if !config.quiet && format != OutputFormat::Dot {
+    if !config.quiet {
         eprintln!(
             "Analyzed {} modules ({} edges) in {:.2}s ({:.0} modules/sec)",
             node_count,

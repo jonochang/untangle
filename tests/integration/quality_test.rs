@@ -2,11 +2,12 @@ use assert_cmd::Command;
 use predicates::prelude::*;
 
 #[test]
-fn quality_crap_rust_json() {
-    Command::cargo_bin("untangle")
+fn quality_functions_rust_json() {
+    let output = Command::cargo_bin("untangle")
         .unwrap()
         .args([
             "quality",
+            "functions",
             "tests/fixtures/quality",
             "--lang",
             "rust",
@@ -20,16 +21,24 @@ fn quality_crap_rust_json() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"metric\": \"crap\""))
-        .stdout(predicate::str::contains("\"function\": \"simple\""));
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["kind"], "quality.functions");
+    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["report"]["metadata"]["metric"], "crap");
+    assert!(json["report"]["results"].to_string().contains("\"simple\""));
 }
 
 #[test]
-fn quality_min_cc_filters() {
-    Command::cargo_bin("untangle")
+fn quality_functions_min_cc_filters() {
+    let output = Command::cargo_bin("untangle")
         .unwrap()
         .args([
             "quality",
+            "functions",
             "tests/fixtures/quality",
             "--lang",
             "python",
@@ -45,21 +54,26 @@ fn quality_min_cc_filters() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"function\": \"foo\""))
-        .stdout(predicate::str::contains("\"function\": \"bar\"").not());
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let report_str = json["report"]["results"].to_string();
+    assert!(report_str.contains("\"foo\""));
+    assert!(!report_str.contains("\"bar\""));
 }
 
 #[test]
-fn quality_overall_rust_json() {
-    Command::cargo_bin("untangle")
+fn quality_project_rust_json() {
+    let output = Command::cargo_bin("untangle")
         .unwrap()
         .args([
             "quality",
+            "project",
             "tests/fixtures/quality",
             "--lang",
             "rust",
-            "--metric",
-            "overall",
             "--coverage",
             "tests/fixtures/quality/lcov.info",
             "--format",
@@ -68,7 +82,34 @@ fn quality_overall_rust_json() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"metric\": \"overall\""))
-        .stdout(predicate::str::contains("\"untangle\""))
-        .stdout(predicate::str::contains("\"crap\""));
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["kind"], "quality.project");
+    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["report"]["metadata"]["metric"], "overall");
+    assert!(json["report"]["overall"]["untangle"].is_object());
+    assert!(json["report"]["overall"]["crap"].is_object());
+}
+
+#[test]
+fn quality_functions_rejects_overall_metric() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "quality",
+            "functions",
+            "tests/fixtures/quality",
+            "--lang",
+            "rust",
+            "--metric",
+            "overall",
+            "--coverage",
+            "tests/fixtures/quality/lcov.info",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("supports only function-level"));
 }

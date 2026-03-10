@@ -58,11 +58,41 @@ fn get_value_for_key(config: &ResolvedConfig, key: &str) -> String {
         "defaults.lang" => config
             .lang
             .map_or("(auto-detect)".to_string(), |l| l.to_string()),
-        "defaults.format" => config.format.clone(),
         "defaults.quiet" => config.quiet.to_string(),
-        "defaults.top" => config.top.map_or("(all)".to_string(), |n| n.to_string()),
         "defaults.include_tests" => config.include_tests.to_string(),
-        "defaults.no_insights" => config.no_insights.to_string(),
+        "analyze.report.format" => config.analyze_report.format.to_string(),
+        "analyze.report.top" => config
+            .analyze_report
+            .top
+            .map_or("(all)".to_string(), |n| n.to_string()),
+        "analyze.report.insights" => match config.analyze_report.insights {
+            crate::config::InsightsConfig::Auto => "auto".to_string(),
+            crate::config::InsightsConfig::On => "on".to_string(),
+            crate::config::InsightsConfig::Off => "off".to_string(),
+        },
+        "analyze.report.threshold_fanout" => config
+            .analyze_report
+            .threshold_fanout
+            .map_or("(unset)".to_string(), |n| n.to_string()),
+        "analyze.report.threshold_scc" => config
+            .analyze_report
+            .threshold_scc
+            .map_or("(unset)".to_string(), |n| n.to_string()),
+        "analyze.graph.format" => config.analyze_graph.format.to_string(),
+        "analyze.architecture.format" => config.analyze_architecture.format.to_string(),
+        "analyze.architecture.level" => config.analyze_architecture.level.to_string(),
+        "diff.format" => config.diff.format.to_string(),
+        "quality.functions.format" => config.quality_functions.format.to_string(),
+        "quality.functions.top" => config
+            .quality_functions
+            .top
+            .map_or("(all)".to_string(), |n| n.to_string()),
+        "quality.project.format" => config.quality_project.format.to_string(),
+        "quality.project.top" => config
+            .quality_project
+            .top
+            .map_or("(all)".to_string(), |n| n.to_string()),
+        "service_graph.format" => config.service_graph.format.to_string(),
         "rules.high_fanout.enabled" => config.rules.high_fanout.enabled.to_string(),
         "rules.high_fanout.min_fanout" => config.rules.high_fanout.min_fanout.to_string(),
         "rules.high_fanout.relative_to_p90" => config.rules.high_fanout.relative_to_p90.to_string(),
@@ -109,7 +139,7 @@ mod tests {
 
     fn make_test_config() -> ResolvedConfig {
         let mut prov = ProvenanceMap::new();
-        prov.set("defaults.format", Source::Default);
+        prov.set("analyze.report.format", Source::Default);
         prov.set("defaults.quiet", Source::Default);
         prov.set(
             "rules.high_fanout.enabled",
@@ -121,14 +151,18 @@ mod tests {
 
         ResolvedConfig {
             lang: None,
-            format: "json".to_string(),
             quiet: false,
-            top: None,
             include_tests: false,
-            no_insights: false,
             include: Vec::new(),
             exclude: Vec::new(),
             ignore_patterns: Vec::new(),
+            analyze_report: Default::default(),
+            analyze_graph: Default::default(),
+            analyze_architecture: Default::default(),
+            diff: Default::default(),
+            quality_functions: Default::default(),
+            quality_project: Default::default(),
+            service_graph: Default::default(),
             rules: ResolvedRules::default(),
             fail_on: Vec::new(),
             go: ResolvedGoConfig::default(),
@@ -151,7 +185,7 @@ mod tests {
         assert!(output.contains("Loaded config files:"));
         assert!(output.contains("/project/.untangle.toml"));
         assert!(output.contains("Resolved settings:"));
-        assert!(output.contains("defaults.format: json <- default"));
+        assert!(output.contains("analyze.report.format: json <- default"));
     }
 
     #[test]

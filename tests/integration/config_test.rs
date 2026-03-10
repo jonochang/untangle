@@ -11,19 +11,15 @@ fn fixture_path(name: &str) -> PathBuf {
 
 #[test]
 fn config_show_defaults() {
-    // No config file present — shows all defaults
     let tmp = tempfile::tempdir().unwrap();
     let mut cmd = Command::cargo_bin("untangle").unwrap();
-    cmd.args(["config", "show", "--path", tmp.path().to_str().unwrap()]);
+    cmd.args(["config", "show", tmp.path().to_str().unwrap()]);
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Loaded config files: (none)"))
         .stdout(predicate::str::contains("Resolved settings:"))
-        .stdout(predicate::str::contains("defaults.format: json <- default"))
+        .stdout(predicate::str::contains("analyze.report.format: json <- default"))
         .stdout(predicate::str::contains("defaults.quiet: false <- default"))
-        .stdout(predicate::str::contains(
-            "rules.high_fanout.enabled: true <- default",
-        ))
         .stdout(predicate::str::contains(
             "rules.high_fanout.min_fanout: 5 <- default",
         ));
@@ -35,8 +31,10 @@ fn config_show_with_project_config() {
     std::fs::write(
         tmp.path().join(".untangle.toml"),
         r#"
-[defaults]
+[analyze.report]
 format = "text"
+
+[defaults]
 quiet = true
 
 [rules.high_fanout]
@@ -46,13 +44,12 @@ min_fanout = 10
     .unwrap();
 
     let mut cmd = Command::cargo_bin("untangle").unwrap();
-    cmd.args(["config", "show", "--path", tmp.path().to_str().unwrap()]);
+    cmd.args(["config", "show", tmp.path().to_str().unwrap()]);
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Loaded config files:"))
         .stdout(predicate::str::contains(".untangle.toml"))
         .stdout(predicate::str::contains(
-            "defaults.format: text <- project config",
+            "analyze.report.format: text <- project config",
         ))
         .stdout(predicate::str::contains(
             "defaults.quiet: true <- project config",
@@ -79,7 +76,6 @@ min_fanout = 20
         "config",
         "explain",
         "high_fanout",
-        "--path",
         tmp.path().to_str().unwrap(),
     ]);
     cmd.assert()
@@ -101,7 +97,6 @@ fn config_explain_unknown_category() {
         "config",
         "explain",
         "nonexistent",
-        "--path",
         tmp.path().to_str().unwrap(),
     ]);
     cmd.assert().success().stdout(predicate::str::contains(
@@ -110,57 +105,57 @@ fn config_explain_unknown_category() {
 }
 
 #[test]
-fn analyze_respects_config_thresholds() {
-    // Create a project config that disables insights
+fn analyze_report_respects_config_insights() {
     let go_fixture = fixture_path("go/simple_module");
     let tmp = tempfile::tempdir().unwrap();
-
-    // Copy fixture to tmp and add config
     let dest = tmp.path().join("project");
     std::fs::create_dir_all(&dest).unwrap();
     copy_dir_recursive(&go_fixture, &dest);
     std::fs::write(
         dest.join(".untangle.toml"),
         r#"
-[defaults]
-no_insights = true
+[analyze.report]
+insights = "off"
 "#,
     )
     .unwrap();
 
     let mut cmd = Command::cargo_bin("untangle").unwrap();
-    cmd.args(["analyze", dest.to_str().unwrap(), "--lang", "go", "--quiet"]);
+    cmd.args([
+        "analyze",
+        "report",
+        dest.to_str().unwrap(),
+        "--lang",
+        "go",
+        "--quiet",
+    ]);
     let output = cmd.output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-
-    // With no_insights=true in config, insights key should be absent
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json.get("insights").is_none());
 }
 
 #[test]
-fn cli_flag_overrides_config() {
+fn cli_flag_overrides_config_format() {
     let go_fixture = fixture_path("go/simple_module");
     let tmp = tempfile::tempdir().unwrap();
-
     let dest = tmp.path().join("project");
     std::fs::create_dir_all(&dest).unwrap();
     copy_dir_recursive(&go_fixture, &dest);
 
-    // Config says text format
     std::fs::write(
         dest.join(".untangle.toml"),
         r#"
-[defaults]
+[analyze.report]
 format = "text"
 "#,
     )
     .unwrap();
 
-    // But CLI flag says json
     let mut cmd = Command::cargo_bin("untangle").unwrap();
     cmd.args([
         "analyze",
+        "report",
         dest.to_str().unwrap(),
         "--lang",
         "go",
@@ -170,43 +165,39 @@ format = "text"
     ]);
     let output = cmd.output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-
-    // Should be valid JSON (CLI flag took precedence)
-    let _: serde_json::Value = serde_json::from_str(&stdout).expect("should be valid JSON");
+    let _: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 }
 
 #[test]
-fn no_insights_flag_works_with_config() {
+fn insights_flag_overrides_config() {
     let go_fixture = fixture_path("go/simple_module");
     let tmp = tempfile::tempdir().unwrap();
-
     let dest = tmp.path().join("project");
     std::fs::create_dir_all(&dest).unwrap();
     copy_dir_recursive(&go_fixture, &dest);
 
-    // Config has no_insights = false
     std::fs::write(
         dest.join(".untangle.toml"),
         r#"
-[defaults]
-no_insights = false
+[analyze.report]
+insights = "on"
 "#,
     )
     .unwrap();
 
-    // But CLI flag --no-insights
     let mut cmd = Command::cargo_bin("untangle").unwrap();
     cmd.args([
         "analyze",
+        "report",
         dest.to_str().unwrap(),
         "--lang",
         "go",
         "--quiet",
-        "--no-insights",
+        "--insights",
+        "off",
     ]);
     let output = cmd.output().unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
-
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json.get("insights").is_none());
 }

@@ -9,6 +9,7 @@ fn analyze_polyglot_auto_detect() {
         .unwrap()
         .args([
             "analyze",
+            "report",
             "tests/fixtures/polyglot",
             "--format",
             "json",
@@ -29,6 +30,7 @@ fn analyze_polyglot_explicit_single_lang() {
         .unwrap()
         .args([
             "analyze",
+            "report",
             "tests/fixtures/polyglot",
             "--lang",
             "go",
@@ -54,6 +56,7 @@ fn analyze_polyglot_text_output() {
         .unwrap()
         .args([
             "analyze",
+            "report",
             "tests/fixtures/polyglot",
             "--format",
             "text",
@@ -68,11 +71,12 @@ fn analyze_polyglot_text_output() {
 }
 
 #[test]
-fn analyze_polyglot_dot_output() {
+fn analyze_graph_polyglot_dot_output() {
     Command::cargo_bin("untangle")
         .unwrap()
         .args([
             "analyze",
+            "graph",
             "tests/fixtures/polyglot",
             "--format",
             "dot",
@@ -86,7 +90,7 @@ fn analyze_polyglot_dot_output() {
 }
 
 #[test]
-fn graph_polyglot_auto_detect() {
+fn deprecated_graph_alias_polyglot_auto_detect() {
     Command::cargo_bin("untangle")
         .unwrap()
         .args([

@@ -1,23 +1,24 @@
 # Output Formats
 
-Untangle supports four output formats, selected via `--format`:
-
-| Format | Flag Value | Best For |
-|--------|-----------|----------|
-| [JSON](./json.md) | `json` | CI pipelines, custom tooling, programmatic access |
-| [Text](./text.md) | `text` | Human-readable terminal output |
-| [DOT](./dot.md) | `dot` | Graph visualization with Graphviz |
-| [SARIF](./sarif.md) | `sarif` | GitHub Code Scanning integration |
-
-The default format is `json`, configurable via the [config file](../configuration/config-file.md) or `UNTANGLE_FORMAT` environment variable.
-
-## Format Availability by Command
+Untangle uses per-command format enums in v2, so the available `--format` values depend on the command you run.
 
 | Command | JSON | Text | DOT | SARIF |
 |---------|------|------|-----|-------|
-| `architecture` | Layered projection | - | Layered graph visualization | - |
-| `analyze` | Default | Full report | Graph only | Warnings |
-| `diff` | Default | Summary + changes | - | Falls back to JSON (warning) |
-| `graph` | Nodes + edges | - | Graph visualization | - |
-| `service-graph` | Default | Summary + edges | Graph visualization | - |
-| `quality` | Default | Full report | - | - |
+| `analyze report` | Full structural report | Full report | - | Warnings for code scanning |
+| `analyze graph` | Raw nodes and edges | - | Graph visualization | - |
+| `analyze architecture` | Layered projection | - | Layered graph visualization | - |
+| `diff` | Diff report | Summary + changes | - | - |
+| `quality functions` | Function-quality report | Full report | - | - |
+| `quality project` | Project-quality report | Full report | - | - |
+| `service-graph` | Service dependency report | Summary + edges | Graph visualization | - |
+
+JSON outputs in v2 all begin with:
+
+```json
+{
+  "kind": "analyze.report",
+  "schema_version": 2
+}
+```
+
+See the per-format pages for examples.

@@ -30,11 +30,11 @@ When multiple insights apply to the same module:
 
 ```bash
 # CLI flag
-untangle analyze ./src --no-insights
+untangle analyze report ./src --insights off
 
 # Config file
-[defaults]
-no_insights = true
+[analyze.report]
+insights = "off"
 ```
 
 ## Configuring Rules

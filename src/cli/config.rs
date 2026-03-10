@@ -14,7 +14,6 @@ pub enum ConfigAction {
     /// Show resolved configuration with provenance
     Show {
         /// Working directory (defaults to current directory)
-        #[arg(long)]
         path: Option<PathBuf>,
     },
     /// Explain where a specific rule's thresholds come from
@@ -22,7 +21,6 @@ pub enum ConfigAction {
         /// Rule category to explain (e.g., high_fanout, god_module)
         category: String,
         /// Working directory (defaults to current directory)
-        #[arg(long)]
         path: Option<PathBuf>,
     },
 }

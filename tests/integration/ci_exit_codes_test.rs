@@ -13,7 +13,7 @@ fn exit_code_0_on_pass() {
 }
 
 #[test]
-fn exit_code_1_on_policy_violation() {
+fn exit_code_0_when_fail_on_has_no_structural_match() {
     Command::cargo_bin("untangle")
         .unwrap()
         .current_dir("tests/fixtures/go/diff_repo")
@@ -30,7 +30,7 @@ fn exit_code_1_on_policy_violation() {
             "--quiet",
         ])
         .assert()
-        .code(1);
+        .code(0);
 }
 
 #[test]
@@ -38,7 +38,7 @@ fn exit_code_1_on_bad_path() {
     // miette wraps errors with exit code 1
     Command::cargo_bin("untangle")
         .unwrap()
-        .args(["analyze", "/nonexistent/path", "--lang", "go"])
+        .args(["analyze", "report", "/nonexistent/path", "--lang", "go"])
         .assert()
         .failure();
 }
@@ -49,6 +49,7 @@ fn analyze_exit_code_0_clean_project() {
         .unwrap()
         .args([
             "analyze",
+            "report",
             "tests/fixtures/go/simple_module",
             "--lang",
             "go",

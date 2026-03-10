@@ -13,6 +13,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, Serialize)]
 pub struct AnalyzeOutput {
+    pub kind: &'static str,
+    pub schema_version: u32,
     pub metadata: Metadata,
     pub summary: Summary,
     pub hotspots: Vec<Hotspot>,
@@ -129,6 +131,8 @@ pub fn write_analyze_json<W: Write>(
     }
 
     let output = AnalyzeOutput {
+        kind: "analyze.report",
+        schema_version: 2,
         metadata,
         summary: summary.clone(),
         hotspots,
@@ -142,6 +146,13 @@ pub fn write_analyze_json<W: Write>(
 
 /// Write diff output as JSON.
 pub fn write_diff_json<W: Write>(writer: &mut W, diff: &DiffResult) -> Result<()> {
-    serde_json::to_writer_pretty(writer, diff)?;
+    serde_json::to_writer_pretty(
+        writer,
+        &serde_json::json!({
+            "kind": "diff.report",
+            "schema_version": 2,
+            "report": diff,
+        }),
+    )?;
     Ok(())
 }

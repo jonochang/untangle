@@ -2,10 +2,10 @@
 
 ## Analyze a Project
 
-Run `untangle analyze` on a source directory:
+Run `untangle analyze report` on a source directory:
 
 ```bash
-untangle analyze ./src --lang python
+untangle analyze report ./src --lang python
 ```
 
 This will parse all Python files, build the dependency graph, compute metrics, and print a JSON report to stdout.
@@ -13,7 +13,7 @@ This will parse all Python files, build the dependency graph, compute metrics, a
 For human-readable output, use `--format text`:
 
 ```bash
-untangle analyze ./src --lang python --format text
+untangle analyze report ./src --lang python --format text
 ```
 
 Example output:
@@ -69,13 +69,13 @@ This exits with code `1` if any module's fan-out increased or a new circular dep
 Generate a Graphviz DOT file and render it:
 
 ```bash
-untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
+untangle analyze graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
 ```
 
 Or export as JSON for custom tooling:
 
 ```bash
-untangle graph ./src --lang rust --format json > graph.json
+untangle analyze graph ./src --lang rust --format json > graph.json
 ```
 
 ## Inspect Configuration

@@ -17,19 +17,19 @@ Untangle builds module-level dependency graphs from your source code, computes s
 
 ```bash
 # Analyze current state
-untangle analyze ./src --lang python
+untangle analyze report ./src --lang python
 
 # Diff against main (the CI use case)
 untangle diff --base origin/main --head HEAD --fail-on fanout-increase,new-scc
 
 # Compute CRAP (complexity + coverage) for functions
-untangle quality ./src --metric crap --coverage lcov.info --lang rust --format text
+untangle quality functions ./src --metric crap --coverage lcov.info --lang rust --format text
 
 # Export graph for visualization
-untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
+untangle analyze graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
 
 # Project a layered architecture view
-untangle architecture ./src --lang python --format dot | dot -Tsvg -o architecture.svg
+untangle analyze architecture ./src --lang python --format dot | dot -Tsvg -o architecture.svg
 ```
 
 ## What It Measures
@@ -47,7 +47,7 @@ untangle architecture ./src --lang python --format dot | dot -Tsvg -o architectu
   run: |
     untangle diff --base origin/main --head ${{ github.sha }} \
       --fail-on fanout-increase,new-scc \
-      --format sarif > untangle.sarif
+      --format json > untangle-diff.json
 ```
 
 | Exit Code | Meaning |
@@ -73,20 +73,29 @@ Create a `.untangle.toml` in your project root:
 ```toml
 [defaults]
 lang = "python"
+quiet = false
+include_tests = false
+
+[targeting]
 exclude = ["vendor/**", "**/test/**", "**/*_test.go"]
 
-[thresholds]
-max_fanout = 15
-max_scc_size = 5
+[analyze.report]
+format = "json"
+top = 20
+insights = "auto"
 
-[fail_on]
-conditions = ["fanout-increase", "new-scc", "scc-growth"]
+[analyze.graph]
+format = "dot"
+
+[diff]
+format = "json"
+fail_on = ["fanout-increase", "new-scc", "scc-growth"]
 ```
 
 ## Example Output
 
 ```
-$ untangle analyze ./src --lang python --format text
+$ untangle analyze report ./src --lang python --format text
 
   Modules: 342    Edges: 1,208    Density: 0.010
   Fan-out: mean 3.5 · p90 8 · max 23
@@ -126,6 +135,7 @@ For `diff`, untangle reads files at arbitrary git refs via [libgit2](https://lib
 
 - [Requirements specification](docs/specs/untangle-requirements.md) — what the tool does, output formats, failure modes
 - [Technical design](docs/specs/untangle-design.md) — Rust implementation plan, data model, testing strategy
+- [API design v2](docs/specs/untangle-api-v2.md) — command model, config layout, and JSON contract
 
 ## License
 

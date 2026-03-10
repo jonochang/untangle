@@ -1,83 +1,35 @@
 # graph
 
-Export the raw dependency graph in DOT or JSON format.
-
-## Usage
+The raw graph export now lives under `analyze`:
 
 ```bash
-untangle graph <PATH> [OPTIONS]
+untangle analyze graph [PATH] [OPTIONS]
 ```
 
-## Arguments
+Use this command when you want the full dependency graph rather than the default report projection.
 
-| Argument | Description |
-|----------|-------------|
-| `PATH` | Path to the source directory (required) |
+## Formats
 
-## Options
-
-| Flag | Type | Description |
-|------|------|-------------|
-| `--lang` | `python\|ruby\|go\|rust` | Language to analyze. Auto-detected if omitted. |
-| `--format` | `json\|dot` | Output format. Default: `dot`. |
-| `--include-tests` | flag | Include test files. |
-| `--include` | glob | Include glob patterns (repeatable). |
-| `--exclude` | glob | Exclude glob patterns (repeatable). |
-| `--quiet` | flag | Suppress progress output. |
+- `dot` for Graphviz and visual rendering
+- `json` for custom tooling
 
 ## Examples
 
-### Render as SVG with Graphviz
-
 ```bash
-untangle graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
-```
-
-### Render as PNG
-
-```bash
-untangle graph ./src --lang python --format dot | dot -Tpng -o deps.png
-```
-
-### Export as JSON for custom tooling
-
-```bash
-untangle graph ./src --lang rust --format json > graph.json
-```
-
-### Open in a browser (macOS)
-
-```bash
-untangle graph ./src --lang python --format dot | dot -Tsvg -o /tmp/deps.svg && open /tmp/deps.svg
-```
-
-## DOT Output
-
-The DOT output produces a valid Graphviz `digraph` with:
-
-- Left-to-right layout (`rankdir=LR`)
-- Box-shaped nodes with language-based fill colors
-- Edge labels showing reference count when a dependency appears in multiple import statements
-
-```dot
-digraph dependencies {
-    rankdir=LR;
-    node [shape=box, style=filled, fillcolor=lightblue];
-
-    "src/core/engine" [label="src/core/engine"];
-    "src/api/handler" [label="src/api/handler"];
-
-    "src/api/handler" -> "src/core/engine";
-    "src/api/handler" -> "src/db/models" [label="3 refs"];
-}
+untangle analyze graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
+untangle analyze graph ./src --lang python --format dot | dot -Tpng -o deps.png
+untangle analyze graph ./src --lang rust --format json > graph.json
+untangle analyze graph ./src --lang python --format dot | dot -Tsvg -o /tmp/deps.svg && open /tmp/deps.svg
 ```
 
 ## JSON Output
 
-The JSON format includes `nodes` and `edges` arrays:
+The JSON output now starts with a v2 envelope:
 
 ```json
 {
+  "kind": "analyze.graph",
+  "schema_version": 2,
   "nodes": [
     { "kind": "module", "path": "src/core/engine.py", "name": "src/core/engine" }
   ],

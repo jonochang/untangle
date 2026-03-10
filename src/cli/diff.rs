@@ -1,5 +1,7 @@
+use crate::cli::common::{RuntimeArgs, TargetArgs};
 use crate::config::resolve::{resolve_config, CliOverrides};
 use crate::errors::{Result, UntangleError};
+use crate::formats::DiffFormat;
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::graph::diff::{
     DiffResult, EdgeChange, FanoutChange, SccChange, SccChanges, SummaryDelta, Verdict,
@@ -7,7 +9,6 @@ use crate::graph::diff::{
 use crate::graph::ir::DepGraph;
 use crate::metrics::scc::find_non_trivial_sccs;
 use crate::metrics::summary::Summary;
-use crate::output::OutputFormat;
 use crate::parse::common::{ImportConfidence, SourceLocation};
 use crate::parse::go::GoFrontend;
 use crate::parse::rust::RustFrontend;
@@ -22,8 +23,11 @@ use std::time::Instant;
 
 #[derive(Debug, Args)]
 pub struct DiffArgs {
-    /// Path to analyze (defaults to current directory)
-    pub path: Option<PathBuf>,
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    #[command(flatten)]
+    pub runtime: RuntimeArgs,
 
     /// Base git ref
     #[arg(long)]
@@ -33,52 +37,28 @@ pub struct DiffArgs {
     #[arg(long)]
     pub head: String,
 
-    /// Language to analyze
-    #[arg(long, value_parser = parse_language)]
-    pub lang: Option<Language>,
-
     /// Output format
     #[arg(long)]
-    pub format: Option<OutputFormat>,
+    pub format: Option<DiffFormat>,
 
     /// Fail-on conditions (comma-separated)
     #[arg(long, value_delimiter = ',')]
     pub fail_on: Vec<String>,
 
-    /// Include test files
-    #[arg(long)]
-    pub include_tests: bool,
-
-    /// Include glob patterns
-    #[arg(long)]
-    pub include: Vec<String>,
-
-    /// Exclude glob patterns
-    #[arg(long)]
-    pub exclude: Vec<String>,
-
-    /// Suppress progress output
-    #[arg(long)]
-    pub quiet: bool,
 }
 
 impl DiffArgs {
     fn to_cli_overrides(&self) -> CliOverrides {
         CliOverrides {
-            lang: self.lang,
-            format: self.format,
-            quiet: self.quiet,
-            include_tests: self.include_tests,
-            include: self.include.clone(),
-            exclude: self.exclude.clone(),
+            lang: self.target.lang,
+            quiet: self.runtime.quiet,
+            include_tests: self.target.include_tests,
+            include: self.target.include.clone(),
+            exclude: self.target.exclude.clone(),
             fail_on: self.fail_on.clone(),
             ..Default::default()
         }
     }
-}
-
-fn parse_language(s: &str) -> std::result::Result<Language, String> {
-    s.parse()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,7 +94,11 @@ impl FailCondition {
 pub fn run(args: &DiffArgs) -> Result<()> {
     let start = Instant::now();
 
-    let path = args.path.clone().unwrap_or_else(|| PathBuf::from("."));
+    let path = args
+        .target
+        .path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("."));
     let root = path
         .canonicalize()
         .map_err(|_| UntangleError::NoFiles { path: path.clone() })?;
@@ -204,24 +188,15 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         scc_changes: diff.scc_changes,
     };
 
-    let format: OutputFormat = config.format.parse().unwrap_or_default();
+    let format = args.format.unwrap_or(config.diff.format);
 
     let mut stdout = std::io::stdout();
     match format {
-        OutputFormat::Json => {
+        DiffFormat::Json => {
             crate::output::json::write_diff_json(&mut stdout, &result)?;
         }
-        OutputFormat::Text => {
+        DiffFormat::Text => {
             crate::output::text::write_diff_text(&mut stdout, &result)?;
-        }
-        OutputFormat::Sarif => {
-            eprintln!("Warning: SARIF output not yet supported for diff, falling back to JSON");
-            crate::output::json::write_diff_json(&mut stdout, &result)?;
-        }
-        OutputFormat::Dot => {
-            return Err(UntangleError::Config(
-                "Dot format is not applicable to diff output".to_string(),
-            ));
         }
     }
 
@@ -356,7 +331,7 @@ fn build_graph_at_ref(
                 let mod_root = crate::walk::find_go_module_root(f, &go_module_map)
                     .map(|(r, _)| r.to_path_buf())
                     .unwrap_or_default();
-                by_module.entry(mod_root).or_default().push(f.clone());
+                by_module.entry(mod_root).or_default().push(f.to_path_buf());
             }
         }
         by_module
@@ -441,13 +416,13 @@ fn build_graph_at_ref(
                     let source_module = if lang == Language::Go {
                         file_path.parent().unwrap_or(file_path).to_path_buf()
                     } else {
-                        file_path.clone()
+                        file_path.to_path_buf()
                     };
                     builder.add_import(&ResolvedImport {
                         source_module,
                         target_module: target,
                         location: SourceLocation {
-                            file: file_path.clone(),
+                            file: file_path.to_path_buf(),
                             line: raw.line,
                             column: raw.column,
                         },

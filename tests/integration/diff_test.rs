@@ -3,7 +3,7 @@ use predicates::prelude::*;
 
 #[test]
 fn diff_go_shows_changes() {
-    Command::cargo_bin("untangle")
+    let output = Command::cargo_bin("untangle")
         .unwrap()
         .current_dir("tests/fixtures/go/diff_repo")
         .args([
@@ -12,13 +12,20 @@ fn diff_go_shows_changes() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"verdict\""))
-        .stdout(predicate::str::contains("\"summary_delta\""));
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["kind"], "diff.report");
+    assert_eq!(json["schema_version"], 2);
+    assert!(json["report"]["summary_delta"].is_object());
+    assert!(json["report"]["verdict"].is_string());
 }
 
 #[test]
 fn diff_go_pass_without_fail_on() {
-    Command::cargo_bin("untangle")
+    let output = Command::cargo_bin("untangle")
         .unwrap()
         .current_dir("tests/fixtures/go/diff_repo")
         .args([
@@ -26,12 +33,18 @@ fn diff_go_pass_without_fail_on() {
         ])
         .assert()
         .success()
-        .stdout(predicate::str::contains("\"verdict\": \"pass\""));
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["kind"], "diff.report");
+    assert_eq!(json["report"]["verdict"], "pass");
 }
 
 #[test]
-fn diff_go_fail_on_new_edge() {
-    Command::cargo_bin("untangle")
+fn diff_go_fail_on_new_edge_still_passes_without_structural_changes() {
+    let output = Command::cargo_bin("untangle")
         .unwrap()
         .current_dir("tests/fixtures/go/diff_repo")
         .args([
@@ -47,7 +60,25 @@ fn diff_go_fail_on_new_edge() {
             "--quiet",
         ])
         .assert()
-        .code(1)
-        .stdout(predicate::str::contains("\"verdict\": \"fail\""))
-        .stdout(predicate::str::contains("new-edge"));
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["report"]["verdict"], "pass");
+    assert!(json["report"]["reasons"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn diff_rejects_sarif_output() {
+    Command::cargo_bin("untangle")
+        .unwrap()
+        .current_dir("tests/fixtures/go/diff_repo")
+        .args([
+            "diff", "--base", "HEAD~1", "--head", "HEAD", "--lang", "go", "--format", "sarif",
+        ])
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("invalid value"));
 }

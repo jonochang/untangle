@@ -1,5 +1,6 @@
 pub mod analyze;
 pub mod architecture;
+pub mod common;
 pub mod config;
 pub mod diff;
 pub mod graph;
@@ -22,13 +23,12 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Commands {
-    /// View projected architecture layers
-    Architecture(architecture::ArchitectureArgs),
     /// Analyze dependency structure of a codebase
     Analyze(analyze::AnalyzeArgs),
     /// Compare dependency structure between two git refs
     Diff(diff::DiffArgs),
-    /// Export raw dependency graph
+    /// Deprecated alias for `analyze graph`
+    #[command(hide = true)]
     Graph(graph::GraphArgs),
     /// Show or explain configuration
     Config(config::ConfigArgs),
@@ -36,17 +36,28 @@ pub enum Commands {
     ServiceGraph(service_graph::ServiceGraphArgs),
     /// Analyze code quality metrics
     Quality(quality::QualityArgs),
+    /// Deprecated alias for `analyze architecture`
+    #[command(hide = true)]
+    Architecture(architecture::ArchitectureArgs),
 }
 
 /// Dispatch to the appropriate command handler.
 pub fn dispatch(cli: Cli) -> Result<()> {
     match cli.command {
-        Commands::Architecture(args) => architecture::run(&args),
         Commands::Analyze(args) => analyze::run(&args),
         Commands::Diff(args) => diff::run(&args),
-        Commands::Graph(args) => graph::run(&args),
+        Commands::Graph(args) => {
+            eprintln!("Warning: `untangle graph` is deprecated; use `untangle analyze graph`");
+            graph::run(&args)
+        }
         Commands::Config(args) => config::run(&args),
         Commands::ServiceGraph(args) => service_graph::run(&args),
         Commands::Quality(args) => quality::run(&args),
+        Commands::Architecture(args) => {
+            eprintln!(
+                "Warning: `untangle architecture` is deprecated; use `untangle analyze architecture`"
+            );
+            architecture::run(&args)
+        }
     }
 }

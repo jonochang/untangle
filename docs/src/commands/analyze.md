@@ -1,75 +1,94 @@
 # analyze
 
-Analyze a source directory, build the dependency graph, compute metrics, and report results.
+`analyze` is now an explicit command family:
 
-## Usage
+- `untangle analyze report [PATH]`
+- `untangle analyze graph [PATH]`
+- `untangle analyze architecture [PATH]`
+
+All three share the same parsing and dependency-resolution pipeline. They differ only in the projection they emit.
+
+## `analyze report`
+
+Build the dependency graph, compute metrics, and emit the default structural report.
+
+### Usage
 
 ```bash
-untangle analyze <PATH> [OPTIONS]
+untangle analyze report [PATH] [OPTIONS]
 ```
 
-## Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `PATH` | Path to the source directory to analyze (required) |
-
-## Options
+### Options
 
 | Flag | Type | Description |
 |------|------|-------------|
 | `--lang` | `python\|ruby\|go\|rust` | Language to analyze. Auto-detected if omitted. |
-| `--format` | `json\|text\|dot\|sarif` | Output format. Default: `json` (configurable). |
+| `--format` | `json\|text\|sarif` | Output format. Default: `json` (configurable). |
 | `--top` | integer | Number of top hotspots to report. |
 | `--threshold-fanout` | integer | Fan-out threshold for reporting / SARIF warnings. |
 | `--threshold-scc` | integer | SCC size threshold for warnings. |
-| `--include-tests` | flag | Include test files (e.g., Go `*_test.go`). |
+| `--insights` | `auto\|on\|off` | Insight rendering mode. |
+| `--include-tests` | flag | Include test files (e.g. Go `*_test.go`). |
 | `--include` | glob | Include glob patterns (repeatable). |
 | `--exclude` | glob | Exclude glob patterns (repeatable). |
 | `--quiet` | flag | Suppress progress output on stderr. |
-| `--no-insights` | flag | Suppress insights from output. |
 
-## Examples
-
-### Basic analysis
+### Examples
 
 ```bash
-untangle analyze ./src --lang python
+untangle analyze report ./src --lang python
+untangle analyze report ./src --lang go --format text --top 10
+untangle analyze report ./src --lang python --format sarif --threshold-fanout 15 > results.sarif
 ```
 
-### Human-readable output with top 10 hotspots
+## `analyze graph`
+
+Export the raw dependency graph as DOT or JSON.
+
+### Usage
 
 ```bash
-untangle analyze ./src --lang go --format text --top 10
+untangle analyze graph [PATH] [OPTIONS]
 ```
 
-### Exclude vendor directories
+### Formats
+
+- `dot`
+- `json`
+
+### Examples
 
 ```bash
-untangle analyze ./src --lang go --exclude "vendor/**" --exclude "**/testdata/**"
+untangle analyze graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
+untangle analyze graph ./src --lang rust --format json > graph.json
 ```
 
-### SARIF output for code scanning
+## `analyze architecture`
+
+Project the dependency graph into a layered architecture view.
+
+### Usage
 
 ```bash
-untangle analyze ./src --lang python --format sarif --threshold-fanout 15 > results.sarif
+untangle analyze architecture [PATH] [OPTIONS]
 ```
 
-### Quiet mode for CI
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--lang <LANG>` | Analyze a single language (`python`, `ruby`, `go`, `rust`) |
+| `--format <FMT>` | Output format: `json` or `dot` |
+| `--level <N>` | Project to hierarchy depth `N` |
+| `--include-tests` | Include test files |
+| `--include <GLOB>` | Include matching files |
+| `--exclude <GLOB>` | Exclude matching files |
+| `--quiet` | Suppress progress output |
+
+### Examples
 
 ```bash
-untangle analyze ./src --lang rust --format json --quiet > analysis.json
+untangle analyze architecture ./src --lang python --format json
+untangle analyze architecture ./src --lang ruby --level 2 --format json
+untangle analyze architecture ./src --lang go --format dot | dot -Tsvg -o architecture.svg
 ```
-
-## Output
-
-The command writes structured output to stdout. See [Output Formats](../output-formats/README.md) for details on each format.
-
-Progress information is written to stderr (suppress with `--quiet`).
-
-## Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | Analysis completed successfully |
-| `1` | Analysis could not complete (no files found, invalid path, etc.) |

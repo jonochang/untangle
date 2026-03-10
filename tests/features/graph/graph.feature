@@ -1,6 +1,6 @@
-Feature: Graph CLI
+Feature: Analyze Graph CLI
 
-  Scenario: Graph output is DOT
+  Scenario: Analyze graph output is DOT
     Given the analyze fixtures
-    When I run graph in dot format
+    When I run analyze graph in dot format
     Then the graph output is dot

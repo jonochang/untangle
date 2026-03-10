@@ -1,23 +1,26 @@
 # quality
 
-Compute function-level code-quality metrics (starting with CRAP).
+`quality` is now split by user-facing task:
 
-## Usage
+- `untangle quality functions [PATH]`
+- `untangle quality project [PATH]`
+
+## `quality functions`
+
+Compute function-level quality metrics such as CRAP.
+
+### Usage
 
 ```bash
-untangle quality <PATH> --metric crap --coverage lcov.info --lang rust
+untangle quality functions [PATH] --metric crap --coverage lcov.info --lang rust
 ```
 
-## Arguments
+### Options
 
-- `<PATH>`: root directory to analyze
-
-## Options
-
-- `--metric <NAME>`: metric to compute (`crap`, `overall`)
-- `--coverage <FILE>`: LCOV coverage file (required for CRAP and overall)
+- `--metric <NAME>`: function metric to compute (`crap`)
+- `--coverage <FILE>`: LCOV coverage file
 - `--lang <LANG>`: limit analysis to a language (`rust`, `go`, `python`, `ruby`)
-- `--format <FMT>`: `json` or `text` (default: config format)
+- `--format <FMT>`: `json` or `text`
 - `--top <N>`: show only top N results
 - `--min-cc <N>`: minimum cyclomatic complexity to include (default: 2)
 - `--min-score <N>`: minimum metric score to include (default: 0)
@@ -26,15 +29,25 @@ untangle quality <PATH> --metric crap --coverage lcov.info --lang rust
 - `--exclude <GLOB>`: exclude glob patterns
 - `--quiet`: suppress progress output
 
-## Examples
+### Example
 
 ```bash
-# Rust project with cargo-llvm-cov
 cargo llvm-cov --lcov --output-path lcov.info
-untangle quality . --metric crap --coverage lcov.info --lang rust --format text
+untangle quality functions . --metric crap --coverage lcov.info --lang rust --format text
 ```
 
+## `quality project`
+
+Compute the project-level quality summary that combines structural metrics with function-level quality data.
+
+### Usage
+
 ```bash
-# Overall report (Untangle + CRAP)
-untangle quality . --metric overall --coverage lcov.info --lang rust --format text
+untangle quality project [PATH] --coverage lcov.info --lang rust --format text
+```
+
+### Example
+
+```bash
+untangle quality project . --coverage lcov.info --lang rust --format text
 ```

@@ -1,14 +1,12 @@
 # architecture
 
-Project the raw dependency graph into a layered architecture view.
-
-This command reuses `untangle`'s normal parsing and resolution pipeline, then groups modules into higher-level components based on their logical module namespace, falling back to path hierarchy when needed. The projection and layer assignment are modeled on the original Clojure `arch-view` implementation.
-
-## Usage
+The architecture projection now lives under `analyze`:
 
 ```bash
-untangle architecture <PATH> [OPTIONS]
+untangle analyze architecture [PATH] [OPTIONS]
 ```
+
+This command reuses Untangle's normal parsing and resolution pipeline, then groups modules into higher-level components based on logical module namespace, falling back to path hierarchy when needed.
 
 ## Options
 
@@ -16,55 +14,44 @@ untangle architecture <PATH> [OPTIONS]
 |------|-------------|
 | `--lang <LANG>` | Analyze a single language (`python`, `ruby`, `go`, `rust`) |
 | `--format <FMT>` | Output format: `json` or `dot` |
-| `--level <N>` | Project to hierarchy depth `N` (default: `1`) |
+| `--level <N>` | Project to hierarchy depth `N` |
 | `--include-tests` | Include test files |
 | `--include <GLOB>` | Include matching files |
 | `--exclude <GLOB>` | Exclude matching files |
 | `--quiet` | Suppress progress output |
 
-## Output
-
-### JSON
-
-JSON output includes:
-
-- `level`: the selected projection depth
-- `metadata`: root path plus source node and edge counts
-- `nodes`: projected architecture components with `id`, `label`, `layer`, and `module_count`
-- `edges`: aggregated component edges with `count`, `source_location_count`, and `feedback`
-- `feedback_edges`: the projected edges removed to rank cyclic graphs
-- `layers`: nodes grouped by layer index
-
-### DOT
-
-DOT output renders a top-to-bottom architecture graph:
-
-- `rankdir=TB` for layered output
-- one node per projected component
-- edge labels for aggregated counts when useful
-- feedback edges highlighted in `firebrick` with dashed styling
-
 ## Examples
 
-### Top-level architecture
-
 ```bash
-untangle architecture ./src --lang python --format json
+untangle analyze architecture ./src --lang python --format json
+untangle analyze architecture ./src --lang ruby --level 2 --format json
+untangle analyze architecture ./src --lang go --format dot | dot -Tsvg -o architecture.svg
 ```
 
-### Drill into the second hierarchy level
+## JSON Output
 
-```bash
-untangle architecture ./src --lang ruby --level 2 --format json
+The JSON output now starts with a v2 envelope:
+
+```json
+{
+  "kind": "analyze.architecture",
+  "schema_version": 2,
+  "nodes": [
+    {
+      "id": "api",
+      "label": "api",
+      "layer": 0,
+      "module_count": 4
+    }
+  ],
+  "edges": [
+    {
+      "from": "api",
+      "to": "db",
+      "count": 3,
+      "source_location_count": 6,
+      "feedback": false
+    }
+  ]
+}
 ```
-
-### Render with Graphviz
-
-```bash
-untangle architecture ./src --lang go --format dot | dot -Tsvg -o architecture.svg
-```
-
-## Notes
-
-- The projection prefers logical module namespaces and strips common source-container roots such as `src`, `lib`, `app`, and `pkg` so the output emphasizes architectural components instead of filesystem boilerplate.
-- `architecture` only supports `json` and `dot` in this version.

@@ -21,7 +21,7 @@ untangle diff [PATH] --base <REF> --head <REF> [OPTIONS]
 | `--base` | git ref | Base git reference (required). E.g., `origin/main`, `HEAD~5`, a commit SHA. |
 | `--head` | git ref | Head git reference (required). E.g., `HEAD`, a branch name. |
 | `--lang` | `python\|ruby\|go\|rust` | Language to analyze. Auto-detected if omitted. |
-| `--format` | `json\|text\|sarif` | Output format. Default: `json`. (`sarif` falls back to JSON with a warning.) |
+| `--format` | `json\|text` | Output format. Default: `json`. |
 | `--fail-on` | conditions | Comma-separated [fail-on conditions](../ci-integration/fail-on.md). |
 | `--include-tests` | flag | Include test files. |
 | `--include` | glob | Include glob patterns (repeatable). |
@@ -61,7 +61,7 @@ The diff output includes:
 - **fanout_changes**: modules whose fan-out changed, with before/after values and entropy
 - **scc_changes**: new SCCs, enlarged SCCs, and resolved (removed) SCCs
 
-Note: `dot` output is not supported for `diff`. `sarif` is accepted but currently falls back to JSON with a warning.
+Note: `dot` and `sarif` output are not supported for `diff` in v2.
 
 ## Verdicts
 
