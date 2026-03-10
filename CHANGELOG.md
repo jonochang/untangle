@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] - 2026-03-11
+
+### Changed
+
+- Refactored high-CRAP text reporting, insight generation, and config resolution paths into smaller internal helpers without changing the CLI or report formats.
+- Centralized config provenance keys so config resolution and `config show` stay aligned as settings evolve.
+
+### Added
+
+- Direct unit coverage for text report rendering, config override application, language detection, and Go/Ruby complexity helpers.
+- Integration assertions for analyze and diff text output paths to lock formatter behavior at the CLI boundary.
+
 ## [0.4.0] - 2026-03-10
 
 ### Added
