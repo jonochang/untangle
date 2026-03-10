@@ -13,6 +13,7 @@ mod metrics;
 mod output;
 mod parse;
 mod quality;
+mod service_graph;
 mod walk;
 
 use clap::Parser;
