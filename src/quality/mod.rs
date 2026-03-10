@@ -1,8 +1,10 @@
 pub mod complexity;
 pub mod coverage;
 pub mod engine;
+pub mod functions;
 pub mod metrics;
 pub mod output;
+pub mod untangle;
 
 use crate::metrics::summary::Summary;
 use crate::walk::Language;
