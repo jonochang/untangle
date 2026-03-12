@@ -4,6 +4,7 @@ use crate::errors::{Result, UntangleError};
 use crate::formats::QualityFormat;
 use crate::quality::engine::{self, OverallRunConfig, QualityRunConfig};
 use crate::quality::output::{json::write_quality_json, text::write_quality_text};
+use crate::quality::report::{self, UnifiedRunConfig};
 use crate::quality::QualityMetricKind;
 use clap::{Args, Subcommand};
 use std::path::PathBuf;
@@ -18,6 +19,8 @@ pub struct QualityArgs {
 pub enum QualityCommand {
     /// Function-level quality metrics
     Functions(FunctionQualityArgs),
+    /// Engineer-facing quality report with structural, function, and architecture analysis
+    Report(ReportQualityArgs),
     /// Project-level quality summary
     Project(ProjectQualityArgs),
 }
@@ -84,6 +87,39 @@ pub struct ProjectQualityArgs {
     pub min_score: f64,
 }
 
+#[derive(Debug, Args)]
+pub struct ReportQualityArgs {
+    #[command(flatten)]
+    pub target: TargetArgs,
+
+    #[command(flatten)]
+    pub runtime: RuntimeArgs,
+
+    /// LCOV coverage file. When omitted, function quality falls back to complexity.
+    #[arg(long)]
+    pub coverage: Option<PathBuf>,
+
+    /// Output format
+    #[arg(long)]
+    pub format: Option<QualityFormat>,
+
+    /// Show only top N hotspots, function results, and priority actions
+    #[arg(long)]
+    pub top: Option<usize>,
+
+    /// Minimum cyclomatic complexity
+    #[arg(long, default_value_t = 2)]
+    pub min_cc: usize,
+
+    /// Minimum metric score
+    #[arg(long, default_value_t = 0.0)]
+    pub min_score: f64,
+
+    /// Hierarchy depth for the embedded architecture view
+    #[arg(long)]
+    pub architecture_level: Option<usize>,
+}
+
 impl FunctionQualityArgs {
     fn to_cli_overrides(&self) -> CliOverrides {
         CliOverrides {
@@ -110,6 +146,19 @@ impl ProjectQualityArgs {
     }
 }
 
+impl ReportQualityArgs {
+    fn to_cli_overrides(&self) -> CliOverrides {
+        CliOverrides {
+            lang: self.target.lang,
+            quiet: self.runtime.quiet,
+            include_tests: self.target.include_tests,
+            include: self.target.include.clone(),
+            exclude: self.target.exclude.clone(),
+            ..Default::default()
+        }
+    }
+}
+
 fn parse_metric(s: &str) -> std::result::Result<QualityMetricKind, String> {
     s.parse()
 }
@@ -117,6 +166,7 @@ fn parse_metric(s: &str) -> std::result::Result<QualityMetricKind, String> {
 pub fn run(args: &QualityArgs) -> Result<()> {
     match &args.command {
         QualityCommand::Functions(args) => run_functions(args),
+        QualityCommand::Report(args) => run_report(args),
         QualityCommand::Project(args) => run_project(args),
     }
 }
@@ -184,6 +234,36 @@ fn run_project(args: &ProjectQualityArgs) -> Result<()> {
     match format {
         QualityFormat::Json => write_quality_json(&mut stdout, &report)?,
         QualityFormat::Text => write_quality_text(&mut stdout, &report)?,
+    }
+
+    Ok(())
+}
+
+fn run_report(args: &ReportQualityArgs) -> Result<()> {
+    let path = args.target.path.clone().unwrap_or_else(|| ".".into());
+    let root = path
+        .canonicalize()
+        .map_err(|_| UntangleError::NoFiles { path })?;
+
+    let resolved = resolve_config(&root, &args.to_cli_overrides())?;
+    let format = args.format.unwrap_or(resolved.quality_project.format);
+
+    let report = report::run(UnifiedRunConfig {
+        root,
+        lang: args.target.lang,
+        coverage_file: args.coverage.clone(),
+        top: args.top.or(resolved.quality_project.top),
+        min_cc: args.min_cc,
+        min_score: args.min_score,
+        architecture_level: args.architecture_level,
+        quiet: args.runtime.quiet,
+        resolved,
+    })?;
+
+    let mut stdout = std::io::stdout();
+    match format {
+        QualityFormat::Json => report::write_json(&mut stdout, &report)?,
+        QualityFormat::Text => report::write_text(&mut stdout, &report)?,
     }
 
     Ok(())

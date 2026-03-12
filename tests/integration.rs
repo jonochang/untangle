@@ -6,6 +6,7 @@ mod integration {
     mod config_test;
     mod diff_test;
     mod polyglot_test;
+    mod quality_report_test;
     mod quality_test;
     mod service_graph_test;
 }

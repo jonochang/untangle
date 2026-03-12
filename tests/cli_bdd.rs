@@ -159,6 +159,46 @@ fn run_project_quality(world: &mut CliWorld) {
     world.output = Some(output);
 }
 
+#[when("I run the unified quality report in json format")]
+fn run_unified_quality_report(world: &mut CliWorld) {
+    let output = run_cmd(
+        &[
+            "quality",
+            "report",
+            "tests/fixtures/quality_report",
+            "--lang",
+            "python",
+            "--coverage",
+            "tests/fixtures/quality_report/lcov.info",
+            "--format",
+            "json",
+            "--quiet",
+        ],
+        None,
+    );
+    world.output = Some(output);
+}
+
+#[when("I run the unified quality report in text format")]
+fn run_unified_quality_report_text(world: &mut CliWorld) {
+    let output = run_cmd(
+        &[
+            "quality",
+            "report",
+            "tests/fixtures/quality_report",
+            "--lang",
+            "python",
+            "--coverage",
+            "tests/fixtures/quality_report/lcov.info",
+            "--format",
+            "text",
+            "--quiet",
+        ],
+        None,
+    );
+    world.output = Some(output);
+}
+
 #[when("I run the functions quality report")]
 fn run_crap_quality(world: &mut CliWorld) {
     let output = run_cmd(
@@ -285,6 +325,98 @@ fn output_includes_hotspots(world: &mut CliWorld) {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Untangle Metric"));
     assert!(stdout.contains("CRAP Summary"));
+}
+
+#[then("the unified quality report output is json")]
+fn unified_quality_report_output_is_json(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("\"kind\": \"quality.report\""));
+}
+
+#[then("the unified quality report includes structural analysis")]
+fn unified_quality_report_includes_structural(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    assert!(json["report"]["structural"]["summary"].is_object());
+    assert!(json["report"]["structural"]["hotspots"].is_array());
+}
+
+#[then("the unified quality report includes function quality")]
+fn unified_quality_report_includes_function_quality(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    assert!(json["report"]["functions"]["metadata"].is_object());
+    assert!(json["report"]["functions"]["results"].is_array());
+}
+
+#[then("the unified quality report includes architecture analysis")]
+fn unified_quality_report_includes_architecture(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    assert!(json["report"]["architecture"]["nodes"].is_array());
+    assert!(json["report"]["architecture"]["layers"].is_array());
+}
+
+#[then("the unified quality report includes priority actions")]
+fn unified_quality_report_includes_priorities(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    assert!(json["report"]["priorities"].is_array());
+}
+
+#[then("the unified quality report includes an architecture diagram")]
+fn unified_quality_report_includes_architecture_diagram(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    let dot = json["report"]["architecture"]["dot"]
+        .as_str()
+        .expect("architecture dot");
+    assert!(dot.contains("digraph architecture"));
+}
+
+#[then("the unified quality report includes priority evidence")]
+fn unified_quality_report_includes_priority_evidence(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Evidence:"));
+    assert!(stdout.contains("Lines 5-17 in src/api/handler.py."));
+}
+
+#[then("the unified quality report includes priority locations")]
+fn unified_quality_report_includes_priority_locations(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Location: src/api/handler.py::handle"));
+}
+
+#[then("the unified quality report includes priority categories")]
+fn unified_quality_report_includes_priority_categories(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("[architecture]"));
+    assert!(stdout.contains("[function]"));
+    assert!(stdout.contains("[structural]"));
+}
+
+#[then("the unified quality report includes the architecture summary")]
+fn unified_quality_report_includes_architecture_summary(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Architecture"));
+    assert!(stdout.contains("Components: 3  Edges: 4  Feedback: 1  Layers: 3"));
+    assert!(stdout.contains("Feedback edges:"));
+    assert!(stdout.contains("api -> service"));
 }
 
 #[then("the output includes the crap report table")]

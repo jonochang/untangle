@@ -1,9 +1,13 @@
 use crate::analysis_context::{build_analysis_context, canonicalize_root, resolve_project_root};
 use crate::config::resolve::{resolve_config, CliOverrides};
+use crate::config::ResolvedConfig;
 use crate::errors::Result;
 use crate::formats::AnalyzeReportFormat;
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
+use crate::graph::ir::DepGraph;
+use crate::insights::Insight;
 use crate::metrics::scc::find_non_trivial_sccs;
+use crate::metrics::scc::SccInfo;
 use crate::metrics::summary::Summary;
 use crate::output::json::{LanguageStats, Metadata};
 use crate::parse::common::{ImportConfidence, RawImport, SourceLocation};
@@ -38,8 +42,15 @@ struct FileParseResult {
     original_file: PathBuf,
 }
 
+pub struct AnalysisSnapshot {
+    pub graph: DepGraph,
+    pub summary: Summary,
+    pub sccs: Vec<SccInfo>,
+    pub metadata: Metadata,
+    pub insights: Option<Vec<Insight>>,
+}
+
 pub fn run_report(request: AnalysisReportRequest) -> Result<()> {
-    let start = Instant::now();
     let scan_root = canonicalize_root(&request.path)?;
     let project_root = resolve_project_root(&scan_root, request.lang);
     let config = resolve_config(
@@ -57,7 +68,56 @@ pub fn run_report(request: AnalysisReportRequest) -> Result<()> {
     )?;
     let context = build_analysis_context(&scan_root, &project_root, &config)?;
     let format = request.format.unwrap_or(config.analyze_report.format);
+    let snapshot = build_analysis_snapshot(
+        &scan_root,
+        &context.project_root,
+        &config,
+        request.insights_disabled,
+    )?;
 
+    let mut stdout = std::io::stdout();
+    let top = request.top.or(config.analyze_report.top);
+    match format {
+        AnalyzeReportFormat::Json => crate::output::json::write_analyze_json(
+            &mut stdout,
+            &snapshot.graph,
+            &snapshot.summary,
+            &snapshot.sccs,
+            snapshot.metadata.clone(),
+            top,
+            snapshot.insights.clone(),
+        )?,
+        AnalyzeReportFormat::Text => crate::output::text::write_analyze_text(
+            &mut stdout,
+            &snapshot.graph,
+            &snapshot.summary,
+            &snapshot.sccs,
+            &snapshot.metadata,
+            top,
+            snapshot.insights.as_deref(),
+        )?,
+        AnalyzeReportFormat::Sarif => crate::output::sarif::write_sarif(
+            &mut stdout,
+            &snapshot.graph,
+            &snapshot.sccs,
+            &snapshot.metadata,
+            request
+                .threshold_fanout
+                .or(config.analyze_report.threshold_fanout),
+        )?,
+    }
+
+    Ok(())
+}
+
+pub fn build_analysis_snapshot(
+    scan_root: &std::path::Path,
+    project_root: &std::path::Path,
+    config: &ResolvedConfig,
+    insights_disabled: bool,
+) -> Result<AnalysisSnapshot> {
+    let start = Instant::now();
+    let context = build_analysis_context(scan_root, project_root, config)?;
     let files_skipped = AtomicUsize::new(0);
     let per_lang_files_parsed: HashMap<Language, usize> = context
         .files_by_lang
@@ -100,7 +160,7 @@ pub fn run_report(request: AnalysisReportRequest) -> Result<()> {
             };
 
             let frontend =
-                factory::create_frontend(*lang, &config, &file_go_module, &context.rust_crate_name);
+                factory::create_frontend(*lang, config, &file_go_module, &context.rust_crate_name);
             let imports = frontend.extract_imports(&source, file_path);
             let source_module =
                 factory::source_module_path(file_path, &context.project_root, *lang);
@@ -132,7 +192,7 @@ pub fn run_report(request: AnalysisReportRequest) -> Result<()> {
         .map(|&lang| {
             let frontend = factory::create_frontend(
                 lang,
-                &config,
+                config,
                 &context.go_module_path,
                 &context.rust_crate_name,
             );
@@ -153,7 +213,7 @@ pub fn run_report(request: AnalysisReportRequest) -> Result<()> {
         .collect();
     let fallback_go_resolver = factory::create_frontend(
         Language::Go,
-        &config,
+        config,
         &context.go_module_path,
         &context.rust_crate_name,
     );
@@ -225,7 +285,7 @@ pub fn run_report(request: AnalysisReportRequest) -> Result<()> {
         unresolved_imports,
         start.elapsed().as_millis() as u64,
     );
-    let insights = if request.insights_disabled
+    let insights = if insights_disabled
         || matches!(
             config.analyze_report.insights,
             crate::config::InsightsConfig::Off
@@ -241,39 +301,13 @@ pub fn run_report(request: AnalysisReportRequest) -> Result<()> {
         ))
     };
 
-    let mut stdout = std::io::stdout();
-    let top = request.top.or(config.analyze_report.top);
-    match format {
-        AnalyzeReportFormat::Json => crate::output::json::write_analyze_json(
-            &mut stdout,
-            &graph,
-            &summary,
-            &sccs,
-            metadata,
-            top,
-            insights,
-        )?,
-        AnalyzeReportFormat::Text => crate::output::text::write_analyze_text(
-            &mut stdout,
-            &graph,
-            &summary,
-            &sccs,
-            &metadata,
-            top,
-            insights.as_deref(),
-        )?,
-        AnalyzeReportFormat::Sarif => crate::output::sarif::write_sarif(
-            &mut stdout,
-            &graph,
-            &sccs,
-            &metadata,
-            request
-                .threshold_fanout
-                .or(config.analyze_report.threshold_fanout),
-        )?,
-    }
-
-    Ok(())
+    Ok(AnalysisSnapshot {
+        graph,
+        summary,
+        sccs,
+        metadata,
+        insights,
+    })
 }
 
 fn group_go_files_by_module(

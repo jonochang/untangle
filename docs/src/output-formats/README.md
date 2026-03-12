@@ -9,6 +9,7 @@ Untangle uses per-command format enums in v2, so the available `--format` values
 | `analyze architecture` | Layered projection | - | Layered graph visualization | - |
 | `diff` | Diff report | Summary + changes | - | - |
 | `quality functions` | Function-quality report | Full report | - | - |
+| `quality report` | Unified quality report | Unified quality report | - | - |
 | `quality project` | Project-quality report | Full report | - | - |
 | `service-graph` | Service dependency report | Summary + edges | Graph visualization | - |
 

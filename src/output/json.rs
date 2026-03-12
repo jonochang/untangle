@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::io::Write;
 use std::path::PathBuf;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AnalyzeOutput {
     pub kind: &'static str,
     pub schema_version: u32,
@@ -23,7 +23,7 @@ pub struct AnalyzeOutput {
     pub insights: Option<Vec<Insight>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Metadata {
     pub language: String,
     pub granularity: String,
@@ -41,7 +41,7 @@ pub struct Metadata {
     pub languages: Option<Vec<LanguageStats>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct LanguageStats {
     pub language: String,
     pub files_parsed: usize,
@@ -50,7 +50,7 @@ pub struct LanguageStats {
     pub imports_unresolved: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Hotspot {
     pub node: String,
     pub fanout: usize,
@@ -61,22 +61,13 @@ pub struct Hotspot {
     pub fanout_edges: Vec<FanoutEdge>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct FanoutEdge {
     pub to: String,
     pub source_locations: Vec<SourceLocation>,
 }
 
-/// Write analyze output as JSON.
-pub fn write_analyze_json<W: Write>(
-    writer: &mut W,
-    graph: &DepGraph,
-    summary: &Summary,
-    sccs: &[SccInfo],
-    metadata: Metadata,
-    top_n: Option<usize>,
-    insights: Option<Vec<Insight>>,
-) -> Result<()> {
+pub fn build_hotspots(graph: &DepGraph, sccs: &[SccInfo], top_n: Option<usize>) -> Vec<Hotspot> {
     let scc_map = crate::metrics::scc::node_scc_map(graph);
 
     let mut hotspots: Vec<Hotspot> = graph
@@ -86,7 +77,6 @@ pub fn write_analyze_json<W: Write>(
             let fanout = crate::metrics::fanout::fan_out(graph, idx);
             let fanin = crate::metrics::fanout::fan_in(graph, idx);
 
-            // Collect outgoing edge weights for entropy
             let edge_weights: Vec<usize> = graph
                 .edges_directed(idx, Direction::Outgoing)
                 .map(|e| e.weight().weight)
@@ -123,19 +113,31 @@ pub fn write_analyze_json<W: Write>(
         })
         .collect();
 
-    // Sort by fan-out descending
     hotspots.sort_by(|a, b| b.fanout.cmp(&a.fanout).then(b.fanin.cmp(&a.fanin)));
 
     if let Some(n) = top_n {
         hotspots.truncate(n);
     }
 
+    hotspots
+}
+
+/// Write analyze output as JSON.
+pub fn write_analyze_json<W: Write>(
+    writer: &mut W,
+    graph: &DepGraph,
+    summary: &Summary,
+    sccs: &[SccInfo],
+    metadata: Metadata,
+    top_n: Option<usize>,
+    insights: Option<Vec<Insight>>,
+) -> Result<()> {
     let output = AnalyzeOutput {
         kind: "analyze.report",
         schema_version: 2,
         metadata,
         summary: summary.clone(),
-        hotspots,
+        hotspots: build_hotspots(graph, sccs, top_n),
         sccs: sccs.to_vec(),
         insights,
     };

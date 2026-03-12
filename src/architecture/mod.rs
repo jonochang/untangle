@@ -32,6 +32,7 @@ pub struct ArchitectureNode {
     pub label: String,
     pub layer: usize,
     pub module_count: usize,
+    pub modules: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -71,12 +72,17 @@ pub fn project_architecture(graph: &DepGraph, root: &Path, level: usize) -> Arch
     let level = level.max(1);
     let mut module_to_component = BTreeMap::new();
     let mut component_module_counts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut component_modules: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for idx in graph.node_indices() {
         let node = &graph[idx];
         let component_id = project_node(node, level);
         module_to_component.insert(idx, component_id.clone());
         *component_module_counts.entry(component_id).or_default() += 1;
+        component_modules
+            .entry(module_to_component[&idx].clone())
+            .or_default()
+            .push(node.name.clone());
     }
 
     let mut aggregated_edges: BTreeMap<EdgeKey, AggregatedEdge> = BTreeMap::new();
@@ -108,6 +114,11 @@ pub fn project_architecture(graph: &DepGraph, root: &Path, level: usize) -> Arch
         .map(|(id, module_count)| ArchitectureNode {
             label: component_label(&id),
             layer: *layer_map.get(&id).unwrap_or(&0),
+            modules: {
+                let mut modules = component_modules.remove(&id).unwrap_or_default();
+                modules.sort();
+                modules
+            },
             id,
             module_count,
         })

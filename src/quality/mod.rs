@@ -4,6 +4,7 @@ pub mod engine;
 pub mod functions;
 pub mod metrics;
 pub mod output;
+pub mod report;
 pub mod untangle;
 
 use crate::metrics::summary::Summary;

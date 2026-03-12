@@ -32,6 +32,9 @@ untangle diff --base origin/main --head HEAD --fail-on fanout-increase,new-scc
 
 # Compute CRAP (complexity + coverage) for functions
 untangle quality functions ./src --metric crap --coverage lcov.info --lang rust --format text
+
+# Generate the unified engineer-facing quality report
+untangle quality report ./src --coverage lcov.info --lang rust --format text
 ```
 
 ## Commands
@@ -40,7 +43,9 @@ untangle quality functions ./src --metric crap --coverage lcov.info --lang rust 
 - `untangle analyze graph [path]` exports the raw dependency graph in `dot` or `json`.
 - `untangle analyze architecture [path]` projects a layered architecture view in `dot` or `json`.
 - `untangle diff [path]` compares two git revisions and supports CI policy gating.
-- `untangle quality functions [path]` and `untangle quality project [path]` report function-level and aggregate quality metrics.
+- `untangle quality functions [path]` reports function-level quality metrics.
+- `untangle quality report [path]` combines structural metrics, hotspots, function quality, architecture analysis, and priority actions.
+- `untangle quality project [path]` keeps the legacy aggregate quality summary.
 - `untangle service-graph [path]` derives service dependencies from `[services]` config plus API metadata.
 - `untangle config show [path]` and `untangle config explain [path]` inspect merged configuration.
 
