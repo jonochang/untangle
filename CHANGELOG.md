@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-03-13
+
+### Added
+
+- `untangle quality report`, a unified engineer-facing report that combines structural metrics, hotspots, function quality, architecture analysis, DOT output, and ranked priority actions in one command.
+- Richer architecture reporting with component membership, feedback edges, and embedded diagram output so engineers can move from hotspots to higher-level dependency problems without stitching multiple commands together.
+- New BDD and integration coverage for the unified report, including actionable text output with priority locations, evidence, categories, and architecture summaries.
+
+### Changed
+
+- Reused the structural analysis pipeline across quality reporting paths instead of recomputing a reduced Untangle summary, keeping engineer-facing report data aligned with `analyze report`.
+- Refactored unified quality text rendering into smaller section writers while making priority actions more actionable for day-to-day remediation work.
+
 ## [0.4.1] - 2026-03-11
 
 ### Changed
