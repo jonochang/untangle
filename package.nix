@@ -16,17 +16,17 @@
 
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "untangle";
-  version = "0.5.0";
+  version = "0.5.1";
 
   src = fetchFromGitHub {
     owner = "jonochang";
     repo = "untangle";
     # Pin to immutable commit instead of mutable tag archives.
-    rev = "846130e4083a36c03a6c7d9aabc5b3e7cd0a014e";
-    hash = "sha256-/bi8vVxYvGYVpPU55soNLDQNdcPsLGhyTsvTr+ksaHg=";
+    rev = "8cc2487b33582c52a4567593f772e38ee6eaf371";
+    hash = "sha256-YXEvoiW/GhFshmv0NV1YIYysEADN5Pnj0q9MCROXavc=";
   };
 
-  cargoHash = "sha256-/O7EeTMfglhfU6PFXU+c1tEYyFFVKzkRgrZqwYn4ANQ=";
+  cargoHash = "sha256-FwotASUoF8v5j+sgGX4WHpPtGzKCNTlU2vPhMy2Fg7s=";
 
   nativeBuildInputs = [
     pkg-config
