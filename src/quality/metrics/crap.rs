@@ -36,12 +36,12 @@ impl QualityMetric for CrapMetric {
     ) -> Vec<QualityResult> {
         let mut results = Vec::new();
         for f in functions {
-            let cov = coverage
+            let display_cov = coverage
                 .and_then(|map| map.get(&f.file))
-                .map(|fc| coverage_for_range(fc, f.start_line, f.end_line))
-                .unwrap_or(0.0);
+                .and_then(|fc| coverage_for_range(fc, f.start_line, f.end_line));
+            let effective_cov = display_cov.unwrap_or(0.0);
             let cc = f.cyclomatic_complexity as f64;
-            let score = Self::crap_score(cc, cov);
+            let score = Self::crap_score(cc, effective_cov);
             results.push(QualityResult {
                 metric: self.kind(),
                 file: f.file.clone(),
@@ -49,7 +49,7 @@ impl QualityMetric for CrapMetric {
                 start_line: f.start_line,
                 end_line: f.end_line,
                 cyclomatic_complexity: f.cyclomatic_complexity,
-                coverage_pct: (cov * 1000.0).round() / 10.0,
+                coverage_pct: display_cov.map(|cov| (cov * 1000.0).round() / 10.0),
                 score: (score * 10.0).round() / 10.0,
                 risk_band: Some(Self::risk_band(score).to_string()),
             });
@@ -61,6 +61,10 @@ impl QualityMetric for CrapMetric {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::quality::FunctionInfo;
+    use crate::walk::Language;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
 
     #[test]
     fn crap_score_full_coverage() {
@@ -72,5 +76,44 @@ mod tests {
     fn crap_score_zero_coverage() {
         let score = CrapMetric::crap_score(10.0, 0.0);
         assert!((score - 110.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn missing_coverage_keeps_numeric_score_but_null_coverage_pct() {
+        let function = FunctionInfo {
+            name: "demo".to_string(),
+            file: PathBuf::from("src/demo.rs"),
+            start_line: 10,
+            end_line: 20,
+            cyclomatic_complexity: 4,
+            language: Language::Rust,
+        };
+
+        let results = CrapMetric.compute(&[function], Some(&HashMap::new()));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].coverage_pct, None);
+        assert_eq!(results[0].score, 20.0);
+    }
+
+    #[test]
+    fn no_instrumented_lines_keep_numeric_score_but_null_coverage_pct() {
+        let function = FunctionInfo {
+            name: "demo".to_string(),
+            file: PathBuf::from("src/demo.rs"),
+            start_line: 10,
+            end_line: 20,
+            cyclomatic_complexity: 4,
+            language: Language::Rust,
+        };
+
+        let mut lines = HashMap::new();
+        lines.insert(1usize, 1u64);
+        let mut coverage = HashMap::new();
+        coverage.insert(PathBuf::from("src/demo.rs"), lines);
+
+        let results = CrapMetric.compute(&[function], Some(&coverage));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].coverage_pct, None);
+        assert_eq!(results[0].score, 20.0);
     }
 }

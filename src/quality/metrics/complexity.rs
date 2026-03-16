@@ -37,7 +37,7 @@ impl QualityMetric for ComplexityMetric {
                 start_line: function.start_line,
                 end_line: function.end_line,
                 cyclomatic_complexity: function.cyclomatic_complexity,
-                coverage_pct: 0.0,
+                coverage_pct: None,
                 score: function.cyclomatic_complexity as f64,
                 risk_band: Some(Self::risk_band(function.cyclomatic_complexity).to_string()),
             })

@@ -7,12 +7,12 @@ pub mod lcov;
 pub type CoverageMap = HashMap<PathBuf, HashMap<usize, u64>>;
 
 /// Fraction of instrumented lines in [start, end] that were hit at least once.
-/// Returns 0.0 when no instrumented lines exist.
+/// Returns None when no instrumented lines exist.
 pub fn coverage_for_range(
     file_coverage: &HashMap<usize, u64>,
     start_line: usize,
     end_line: usize,
-) -> f64 {
+) -> Option<f64> {
     let mut instrumented = 0usize;
     let mut covered = 0usize;
     for line in start_line..=end_line {
@@ -24,9 +24,9 @@ pub fn coverage_for_range(
         }
     }
     if instrumented == 0 {
-        0.0
+        None
     } else {
-        covered as f64 / instrumented as f64
+        Some(covered as f64 / instrumented as f64)
     }
 }
 
@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn coverage_for_range_empty() {
         let map: HashMap<usize, u64> = HashMap::new();
-        assert_eq!(coverage_for_range(&map, 1, 10), 0.0);
+        assert_eq!(coverage_for_range(&map, 1, 10), None);
     }
 
     #[test]
@@ -47,6 +47,6 @@ mod tests {
         map.insert(2, 0);
         map.insert(3, 2);
         let cov = coverage_for_range(&map, 1, 3);
-        assert!((cov - (2.0 / 3.0)).abs() < 1e-9);
+        assert_eq!(cov, Some(2.0 / 3.0));
     }
 }

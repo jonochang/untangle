@@ -19,6 +19,13 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
+fn format_coverage_label(coverage_pct: Option<f64>) -> String {
+    match coverage_pct {
+        Some(value) => format!("{value:.1}%"),
+        None => "N/A".to_string(),
+    }
+}
+
 pub struct UnifiedRunConfig {
     pub root: PathBuf,
     pub lang: Option<Language>,
@@ -323,8 +330,11 @@ fn prioritize(
             score: result.score * 2.0 + result.cyclomatic_complexity as f64,
             title: format!("Reduce {} score in {}", result.metric, result.function),
             summary: format!(
-                "Function '{}' has cc={} and score={:.1} with {:.1}% coverage.",
-                result.function, result.cyclomatic_complexity, result.score, result.coverage_pct
+                "Function '{}' has cc={} and score={:.1} with {} coverage.",
+                result.function,
+                result.cyclomatic_complexity,
+                result.score,
+                format_coverage_label(result.coverage_pct)
             ),
             file: Some(result.file.clone()),
             module: None,
@@ -463,7 +473,7 @@ pub fn write_json<W: Write>(writer: &mut W, report: &UnifiedQualityReport) -> Re
         writer,
         &serde_json::json!({
             "kind": "quality.report",
-            "schema_version": 3,
+            "schema_version": 4,
             "report": report,
         }),
     )?;
@@ -591,12 +601,12 @@ fn write_function_section<W: Write>(writer: &mut W, functions: &FunctionSection)
         let risk = result.risk_band.as_deref().unwrap_or("-");
         writeln!(
             writer,
-            "  - {} {} score={:.1} cc={} cov={:.1}% risk={}",
+            "  - {} {} score={:.1} cc={} cov={} risk={}",
             result.file.display(),
             result.function,
             result.score,
             result.cyclomatic_complexity,
-            result.coverage_pct,
+            format_coverage_label(result.coverage_pct),
             risk
         )?;
     }

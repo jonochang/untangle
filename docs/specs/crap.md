@@ -110,7 +110,7 @@ pub struct CrapResult {
     pub function: String,
     pub start_line: usize,
     pub cyclomatic_complexity: usize,
-    pub coverage_pct: f64,   // 0.0–100.0; NaN encodes "no data"
+    pub coverage_pct: Option<f64>,   // None encodes "no data"
     pub crap_score: f64,
 }
 

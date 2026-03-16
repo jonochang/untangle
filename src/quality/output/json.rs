@@ -12,7 +12,7 @@ pub fn write_quality_json<W: Write>(writer: &mut W, report: &QualityReport) -> R
         writer,
         &serde_json::json!({
             "kind": kind,
-            "schema_version": 2,
+            "schema_version": 3,
             "report": report,
         }),
     )?;

@@ -2,6 +2,13 @@ use crate::errors::Result;
 use crate::quality::QualityReport;
 use std::io::Write;
 
+fn format_coverage_pct(coverage_pct: Option<f64>) -> String {
+    match coverage_pct {
+        Some(value) => format!("{value:>5.1}%"),
+        None => "  N/A ".to_string(),
+    }
+}
+
 pub fn write_quality_text<W: Write>(writer: &mut W, report: &QualityReport) -> Result<()> {
     writeln!(writer, "Untangle Quality Report")?;
     writeln!(writer, "======================")?;
@@ -112,11 +119,11 @@ pub fn write_quality_text<W: Write>(writer: &mut W, report: &QualityReport) -> R
         let risk = r.risk_band.as_deref().unwrap_or("-");
         writeln!(
             writer,
-            "{:<30} {:<40} {:>4} {:>5.1}% {:>8.1} {:>8}",
+            "{:<30} {:<40} {:>4} {:>6} {:>8.1} {:>8}",
             r.function,
             r.file.display(),
             r.cyclomatic_complexity,
-            r.coverage_pct,
+            format_coverage_pct(r.coverage_pct),
             r.score,
             risk
         )?;

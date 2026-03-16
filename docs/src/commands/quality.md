@@ -37,6 +37,9 @@ cargo llvm-cov --lcov --output-path lcov.info
 untangle quality functions . --metric crap --coverage lcov.info --lang rust --format text
 ```
 
+When a function has no instrumented lines in the LCOV range, coverage is shown as `N/A` / `null`
+while the score remains numeric.
+
 ## `quality project`
 
 Compute the project-level quality summary that combines structural metrics with function-level quality data.
@@ -88,3 +91,5 @@ untangle quality report [PATH] [OPTIONS]
 untangle quality report . --coverage lcov.info --lang rust --format text
 untangle quality report . --lang python --format json
 ```
+
+Without coverage input, function rows show `coverage = N/A` and report complexity-based scores.

@@ -61,7 +61,7 @@ pub struct QualityResult {
     pub start_line: usize,
     pub end_line: usize,
     pub cyclomatic_complexity: usize,
-    pub coverage_pct: f64,
+    pub coverage_pct: Option<f64>,
     pub score: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub risk_band: Option<String>,

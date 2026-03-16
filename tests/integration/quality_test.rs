@@ -27,7 +27,7 @@ fn quality_functions_rust_json() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["kind"], "quality.functions");
-    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["schema_version"], 3);
     assert_eq!(json["report"]["metadata"]["metric"], "crap");
     assert!(json["report"]["results"].to_string().contains("\"simple\""));
 }
@@ -88,7 +88,7 @@ fn quality_project_rust_json() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["kind"], "quality.project");
-    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["schema_version"], 3);
     assert_eq!(json["report"]["metadata"]["metric"], "overall");
     assert!(json["report"]["overall"]["untangle"].is_object());
     assert!(json["report"]["overall"]["crap"].is_object());
@@ -144,4 +144,33 @@ fn quality_functions_complexity_works_without_coverage() {
         serde_json::Value::Null
     );
     assert!(json["report"]["results"].to_string().contains("\"simple\""));
+    for result in json["report"]["results"].as_array().unwrap() {
+        assert_eq!(result["coverage_pct"], serde_json::Value::Null);
+    }
+}
+
+#[test]
+fn quality_functions_text_renders_na_coverage_for_complexity() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "quality",
+            "functions",
+            "tests/fixtures/quality",
+            "--lang",
+            "rust",
+            "--metric",
+            "complexity",
+            "--format",
+            "text",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    assert!(text.contains("N/A"));
 }

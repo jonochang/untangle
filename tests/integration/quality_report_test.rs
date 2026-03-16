@@ -24,7 +24,7 @@ fn quality_report_json_includes_unified_sections() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["kind"], "quality.report");
-    assert_eq!(json["schema_version"], 3);
+    assert_eq!(json["schema_version"], 4);
 
     let report = &json["report"];
     assert!(report["structural"]["summary"].is_object());
@@ -79,6 +79,9 @@ fn quality_report_without_coverage_falls_back_to_complexity() {
         json["report"]["functions"]["metadata"]["coverage_file"],
         serde_json::Value::Null
     );
+    for result in json["report"]["functions"]["results"].as_array().unwrap() {
+        assert_eq!(result["coverage_pct"], serde_json::Value::Null);
+    }
 }
 
 #[test]
@@ -115,4 +118,29 @@ fn quality_report_text_includes_priority_locations_and_evidence() {
     assert!(text.contains("Components: 3  Edges: 4  Feedback: 1  Layers: 3"));
     assert!(text.contains("Feedback edges:"));
     assert!(text.contains("api -> service"));
+}
+
+#[test]
+fn quality_report_text_uses_na_coverage_without_coverage_file() {
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "quality",
+            "report",
+            "tests/fixtures/quality_report",
+            "--lang",
+            "python",
+            "--format",
+            "text",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let text = String::from_utf8(output).unwrap();
+    assert!(text.contains("cov=N/A"));
+    assert!(text.contains("with N/A coverage."));
 }

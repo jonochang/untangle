@@ -199,6 +199,42 @@ fn run_unified_quality_report_text(world: &mut CliWorld) {
     world.output = Some(output);
 }
 
+#[when("I run the unified quality report without coverage in text format")]
+fn run_unified_quality_report_text_without_coverage(world: &mut CliWorld) {
+    let output = run_cmd(
+        &[
+            "quality",
+            "report",
+            "tests/fixtures/quality_report",
+            "--lang",
+            "python",
+            "--format",
+            "text",
+            "--quiet",
+        ],
+        None,
+    );
+    world.output = Some(output);
+}
+
+#[when("I run the unified quality report without coverage in json format")]
+fn run_unified_quality_report_json_without_coverage(world: &mut CliWorld) {
+    let output = run_cmd(
+        &[
+            "quality",
+            "report",
+            "tests/fixtures/quality_report",
+            "--lang",
+            "python",
+            "--format",
+            "json",
+            "--quiet",
+        ],
+        None,
+    );
+    world.output = Some(output);
+}
+
 #[when("I run the functions quality report")]
 fn run_crap_quality(world: &mut CliWorld) {
     let output = run_cmd(
@@ -417,6 +453,38 @@ fn unified_quality_report_includes_architecture_summary(world: &mut CliWorld) {
     assert!(stdout.contains("Components: 3  Edges: 4  Feedback: 1  Layers: 3"));
     assert!(stdout.contains("Feedback edges:"));
     assert!(stdout.contains("api -> service"));
+}
+
+#[then("the unified quality report shows N/A coverage in text")]
+fn unified_quality_report_shows_na_coverage_in_text(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("cov=N/A"));
+    assert!(stdout.contains("with N/A coverage."));
+}
+
+#[then("the unified quality report json uses null coverage")]
+fn unified_quality_report_json_uses_null_coverage(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    assert_eq!(json["report"]["functions"]["metadata"]["metric"], "complexity");
+    let results = json["report"]["functions"]["results"]
+        .as_array()
+        .expect("function results");
+    assert!(!results.is_empty(), "expected function results");
+    assert!(results
+        .iter()
+        .all(|result| result["coverage_pct"] == serde_json::Value::Null));
+}
+
+#[then("the unified quality report json uses schema version 4")]
+fn unified_quality_report_json_uses_schema_version_4(world: &mut CliWorld) {
+    let output = world.output.as_ref().expect("output available");
+    assert!(output.status.success(), "command failed");
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
+    assert_eq!(json["schema_version"], 4);
 }
 
 #[then("the output includes the crap report table")]

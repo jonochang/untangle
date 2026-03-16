@@ -78,12 +78,17 @@ The `kind` value identifies the command/view that produced the payload.
 ```json
 {
   "kind": "quality.functions",
-  "schema_version": 2,
+  "schema_version": 3,
   "report": {
     "metadata": {
       "metric": "crap"
     },
-    "results": []
+    "results": [
+      {
+        "coverage_pct": null,
+        "score": 12.0
+      }
+    ]
   }
 }
 ```
@@ -91,7 +96,7 @@ The `kind` value identifies the command/view that produced the payload.
 ```json
 {
   "kind": "quality.project",
-  "schema_version": 2,
+  "schema_version": 3,
   "report": {
     "metadata": {
       "metric": "overall"
