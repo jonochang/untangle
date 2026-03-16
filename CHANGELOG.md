@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-03-16
+
+### Changed
+
+- Represent unknown function coverage as `N/A` in text output and `null` in JSON while keeping CRAP and complexity scores numeric for sorting, filtering, and summaries.
+- Bump quality JSON schema versions to reflect the nullable coverage field in `quality.functions`, `quality.project`, and `quality.report`.
+
+### Added
+
+- Integration and BDD coverage for no-coverage quality report flows, including `cov=N/A`, `coverage_pct: null`, and the updated unified quality report schema version.
+
 ## [0.5.0] - 2026-03-13
 
 ### Added

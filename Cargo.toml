@@ -1,6 +1,6 @@
 [package]
 name = "untangle"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 description = "Module-level dependency graph analyzer for Python, Ruby, Go, and Rust"
 license = "MIT OR Apache-2.0"
@@ -34,6 +34,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 toml = "0.8"
+toml_edit = "0.22"
 
 # Git
 git2 = "0.20"
