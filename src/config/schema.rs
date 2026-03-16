@@ -92,6 +92,31 @@ pub struct AnalyzeGraphFileConfig {
 pub struct AnalyzeArchitectureFileConfig {
     pub format: Option<String>,
     pub level: Option<usize>,
+    pub check_format: Option<String>,
+    pub fail_on_violations: Option<bool>,
+    pub fail_on_cycles: Option<bool>,
+    #[serde(default)]
+    pub ignored_components: Vec<String>,
+    #[serde(default)]
+    pub allowed_dependencies: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub forbidden_dependencies: Vec<ArchitectureForbiddenDependencyFileConfig>,
+    #[serde(default)]
+    pub exceptions: Vec<ArchitectureExceptionFileConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ArchitectureForbiddenDependencyFileConfig {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct ArchitectureExceptionFileConfig {
+    pub from_component: Option<String>,
+    pub to_component: Option<String>,
+    pub from_module: Option<String>,
+    pub to_module: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

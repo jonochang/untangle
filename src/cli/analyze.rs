@@ -1,5 +1,7 @@
 use crate::analysis_report::{self, AnalysisReportRequest};
 use crate::cli::architecture;
+use crate::cli::architecture_check;
+use crate::cli::architecture_init;
 use crate::cli::common::{RuntimeArgs, TargetArgs};
 use crate::cli::graph;
 use crate::errors::Result;
@@ -20,6 +22,12 @@ pub enum AnalyzeCommand {
     Graph(graph::GraphArgs),
     /// Export the projected architecture view
     Architecture(architecture::ArchitectureArgs),
+    /// Check projected architecture against configured policy
+    #[command(name = "architecture-check")]
+    ArchitectureCheck(architecture_check::ArchitectureCheckArgs),
+    /// Generate a starter architecture policy from observed projected dependencies
+    #[command(name = "architecture-init")]
+    ArchitectureInit(architecture_init::ArchitectureInitArgs),
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -79,5 +87,7 @@ pub fn run(args: &AnalyzeArgs) -> Result<()> {
         }),
         AnalyzeCommand::Graph(args) => graph::run(args),
         AnalyzeCommand::Architecture(args) => architecture::run(args),
+        AnalyzeCommand::ArchitectureCheck(args) => architecture_check::run(args),
+        AnalyzeCommand::ArchitectureInit(args) => architecture_init::run(args),
     }
 }

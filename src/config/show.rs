@@ -30,14 +30,20 @@ pub fn render_explain<W: Write>(
     config: &ResolvedConfig,
     category: &str,
 ) -> std::io::Result<()> {
-    let prefix = format!("rules.{}.", category);
-    let entries: Vec<_> = config.provenance.entries_with_prefix(&prefix);
+    let entries: Vec<_> = if category == "architecture_policy" {
+        config
+            .provenance
+            .entries_with_prefix("analyze.architecture.")
+    } else {
+        let prefix = format!("rules.{}.", category);
+        config.provenance.entries_with_prefix(&prefix)
+    };
 
     if entries.is_empty() {
         writeln!(w, "Unknown rule category: {}", category)?;
         writeln!(
             w,
-            "Available categories: high_fanout, god_module, circular_dependency, deep_chain, high_entropy"
+            "Available categories: high_fanout, god_module, circular_dependency, deep_chain, high_entropy, architecture_policy"
         )?;
         return Ok(());
     }
@@ -104,6 +110,33 @@ fn analyze_value(config: &ResolvedConfig, key: &str) -> Option<String> {
         keys::ANALYZE_GRAPH_FORMAT => Some(config.analyze_graph.format.to_string()),
         keys::ANALYZE_ARCHITECTURE_FORMAT => Some(config.analyze_architecture.format.to_string()),
         keys::ANALYZE_ARCHITECTURE_LEVEL => Some(config.analyze_architecture.level.to_string()),
+        keys::ANALYZE_ARCHITECTURE_CHECK_FORMAT => {
+            Some(config.analyze_architecture.check_format.to_string())
+        }
+        keys::ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS => Some(
+            config
+                .analyze_architecture
+                .fail_on_violations
+                .to_string(),
+        ),
+        keys::ANALYZE_ARCHITECTURE_FAIL_ON_CYCLES => {
+            Some(config.analyze_architecture.fail_on_cycles.to_string())
+        }
+        keys::ANALYZE_ARCHITECTURE_IGNORED_COMPONENTS => Some(format!(
+            "{:?}",
+            config.analyze_architecture.ignored_components
+        )),
+        keys::ANALYZE_ARCHITECTURE_ALLOWED_DEPENDENCIES => Some(format!(
+            "{:?}",
+            config.analyze_architecture.allowed_dependencies
+        )),
+        keys::ANALYZE_ARCHITECTURE_FORBIDDEN_DEPENDENCIES => Some(format!(
+            "{:?}",
+            config.analyze_architecture.forbidden_dependencies
+        )),
+        keys::ANALYZE_ARCHITECTURE_EXCEPTIONS => {
+            Some(format!("{:?}", config.analyze_architecture.exceptions))
+        }
         keys::DIFF_FORMAT => Some(config.diff.format.to_string()),
         keys::SERVICE_GRAPH_FORMAT => Some(config.service_graph.format.to_string()),
         _ => None,

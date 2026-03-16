@@ -1,5 +1,6 @@
 use crate::cli::common::{RuntimeArgs, TargetArgs};
 use crate::config::resolve::{resolve_config, CliOverrides};
+use crate::config::ResolvedArchitectureConfig;
 use crate::errors::{Result, UntangleError};
 use crate::formats::DiffFormat;
 use crate::graph::diff::{analyze_repo_diff, DiffAnalysisRequest, FailCondition, Verdict};
@@ -66,6 +67,12 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         .iter()
         .filter_map(|condition| FailCondition::parse(condition))
         .collect();
+    let has_architecture_policy = has_architecture_policy(&config.analyze_architecture);
+    ensure_architecture_policy_available(
+        &conditions,
+        &config.analyze_architecture,
+        has_architecture_policy,
+    )?;
 
     let result = analyze_repo_diff(DiffAnalysisRequest {
         repo: &repo,
@@ -80,6 +87,7 @@ pub fn run(args: &DiffArgs) -> Result<()> {
         ruby_load_paths: &config.ruby_load_paths(),
         ruby_zeitwerk: config.ruby.zeitwerk,
         conditions: &conditions,
+        architecture_config: has_architecture_policy.then_some(&config.analyze_architecture),
     })?;
 
     let mut stdout = std::io::stdout();
@@ -93,6 +101,36 @@ pub fn run(args: &DiffArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn ensure_architecture_policy_available(
+    conditions: &[FailCondition],
+    _config: &ResolvedArchitectureConfig,
+    has_architecture_policy: bool,
+) -> Result<()> {
+    let needs_architecture_policy = conditions.iter().any(|condition| {
+        matches!(
+            condition,
+            FailCondition::NewArchitectureViolation
+                | FailCondition::NewArchitectureCycle
+                | FailCondition::ArchitectureCycleGrowth
+        )
+    });
+    if needs_architecture_policy && !has_architecture_policy {
+        return Err(UntangleError::Config(
+            "Architecture diff policies require [analyze.architecture] policy configuration"
+                .to_string(),
+        ));
+    }
+
+    Ok(())
+}
+
+fn has_architecture_policy(config: &ResolvedArchitectureConfig) -> bool {
+    !config.allowed_dependencies.is_empty()
+        || !config.forbidden_dependencies.is_empty()
+        || !config.exceptions.is_empty()
+        || !config.ignored_components.is_empty()
 }
 
 fn determine_languages(

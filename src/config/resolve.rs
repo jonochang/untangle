@@ -1,15 +1,15 @@
 use crate::config::provenance::{ProvenanceMap, Source};
 use crate::config::schema::FileConfig;
 use crate::config::{
-    keys, CircularDependencyRule, DeepChainRule, GodModuleRule, HighEntropyRule, HighFanoutRule,
-    InsightsConfig, OverrideEntry, ResolvedAnalyzeReportConfig, ResolvedArchitectureConfig,
-    ResolvedConfig, ResolvedDiffConfig, ResolvedGoConfig, ResolvedGraphConfig,
-    ResolvedPythonConfig, ResolvedQualityConfig, ResolvedRubyConfig, ResolvedRules,
-    ResolvedService, ResolvedServiceGraphConfig,
+    keys, ArchitectureException, ArchitectureForbiddenDependency, CircularDependencyRule,
+    DeepChainRule, GodModuleRule, HighEntropyRule, HighFanoutRule, InsightsConfig, OverrideEntry,
+    ResolvedAnalyzeReportConfig, ResolvedArchitectureConfig, ResolvedConfig, ResolvedDiffConfig,
+    ResolvedGoConfig, ResolvedGraphConfig, ResolvedPythonConfig, ResolvedQualityConfig,
+    ResolvedRubyConfig, ResolvedRules, ResolvedService, ResolvedServiceGraphConfig,
 };
 use crate::errors::{Result, UntangleError};
 use crate::formats::{
-    AnalyzeReportFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
+    AnalyzeReportFormat, ArchitectureCheckFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
     ServiceGraphFormat,
 };
 use crate::walk::Language;
@@ -175,6 +175,14 @@ fn parse_architecture_format(value: &str) -> Option<ArchitectureFormat> {
     }
 }
 
+fn parse_architecture_check_format(value: &str) -> Option<ArchitectureCheckFormat> {
+    match value {
+        "json" => Some(ArchitectureCheckFormat::Json),
+        "text" => Some(ArchitectureCheckFormat::Text),
+        _ => None,
+    }
+}
+
 fn parse_diff_format(value: &str) -> Option<DiffFormat> {
     match value {
         "json" => Some(DiffFormat::Json),
@@ -292,6 +300,70 @@ fn apply_command_defaults(
     if let Some(level) = file.analyze.architecture.level {
         config.analyze_architecture.level = level.max(1);
         prov.set(keys::ANALYZE_ARCHITECTURE_LEVEL, source.clone());
+    }
+    if let Some(ref format) = file.analyze.architecture.check_format {
+        if let Some(parsed) = parse_architecture_check_format(format) {
+            config.analyze_architecture.check_format = parsed;
+            prov.set(keys::ANALYZE_ARCHITECTURE_CHECK_FORMAT, source.clone());
+        }
+    }
+    if let Some(fail_on_violations) = file.analyze.architecture.fail_on_violations {
+        config.analyze_architecture.fail_on_violations = fail_on_violations;
+        prov.set(keys::ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS, source.clone());
+    }
+    if let Some(fail_on_cycles) = file.analyze.architecture.fail_on_cycles {
+        config.analyze_architecture.fail_on_cycles = fail_on_cycles;
+        prov.set(keys::ANALYZE_ARCHITECTURE_FAIL_ON_CYCLES, source.clone());
+    }
+    if !file.analyze.architecture.ignored_components.is_empty() {
+        config.analyze_architecture.ignored_components =
+            file.analyze.architecture.ignored_components.clone();
+        prov.set(keys::ANALYZE_ARCHITECTURE_IGNORED_COMPONENTS, source.clone());
+    }
+    if !file.analyze.architecture.allowed_dependencies.is_empty() {
+        config.analyze_architecture.allowed_dependencies = file
+            .analyze
+            .architecture
+            .allowed_dependencies
+            .iter()
+            .map(|(key, value)| {
+                let mut deps = value.clone();
+                deps.sort();
+                (key.clone(), deps)
+            })
+            .collect();
+        prov.set(keys::ANALYZE_ARCHITECTURE_ALLOWED_DEPENDENCIES, source.clone());
+    }
+    if !file.analyze.architecture.forbidden_dependencies.is_empty() {
+        config.analyze_architecture.forbidden_dependencies = file
+            .analyze
+            .architecture
+            .forbidden_dependencies
+            .iter()
+            .map(|entry| ArchitectureForbiddenDependency {
+                from: entry.from.clone(),
+                to: entry.to.clone(),
+            })
+            .collect();
+        prov.set(keys::ANALYZE_ARCHITECTURE_FORBIDDEN_DEPENDENCIES, source.clone());
+    }
+    if !file.analyze.architecture.exceptions.is_empty() {
+        config.analyze_architecture.exceptions = file
+            .analyze
+            .architecture
+            .exceptions
+            .iter()
+            .filter(|entry| entry.from_module.is_some() || entry.to_module.is_some())
+            .map(|entry| ArchitectureException {
+                from_component: entry.from_component.clone(),
+                to_component: entry.to_component.clone(),
+                from_module: entry.from_module.clone(),
+                to_module: entry.to_module.clone(),
+            })
+            .collect();
+        if !config.analyze_architecture.exceptions.is_empty() {
+            prov.set(keys::ANALYZE_ARCHITECTURE_EXCEPTIONS, source.clone());
+        }
     }
     if let Some(ref format) = file.diff.format {
         if let Some(parsed) = parse_diff_format(format) {

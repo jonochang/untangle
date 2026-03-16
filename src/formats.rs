@@ -22,6 +22,7 @@ macro_rules! format_enum {
 format_enum!(AnalyzeReportFormat { Json, Text, Sarif });
 format_enum!(GraphFormat { Json, Dot });
 format_enum!(ArchitectureFormat { Json, Dot });
+format_enum!(ArchitectureCheckFormat { Json, Text });
 format_enum!(DiffFormat { Json, Text });
 format_enum!(QualityFormat { Json, Text });
 format_enum!(ServiceGraphFormat { Json, Text, Dot });

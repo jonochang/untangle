@@ -27,6 +27,12 @@ untangle analyze graph ./src --lang go --format dot | dot -Tsvg -o deps.svg
 # Project a layered architecture view
 untangle analyze architecture ./src --lang python --format dot | dot -Tsvg -o architecture.svg
 
+# Check projected architecture against policy
+untangle analyze architecture-check ./src --lang python --format text
+
+# Generate a starter architecture policy
+untangle analyze architecture-init ./src --lang python --level 1
+
 # Diff against main (the CI use case)
 untangle diff --base origin/main --head HEAD --fail-on fanout-increase,new-scc
 
@@ -42,6 +48,8 @@ untangle quality report ./src --coverage lcov.info --lang rust --format text
 - `untangle analyze report [path]` prints the standard structural report in `text`, `json`, or `sarif`.
 - `untangle analyze graph [path]` exports the raw dependency graph in `dot` or `json`.
 - `untangle analyze architecture [path]` projects a layered architecture view in `dot` or `json`.
+- `untangle analyze architecture-check [path]` validates projected component boundaries in `text` or `json`.
+- `untangle analyze architecture-init [path]` generates a starter architecture policy in `.untangle.toml`.
 - `untangle diff [path]` compares two git revisions and supports CI policy gating.
 - `untangle quality functions [path]` reports function-level quality metrics.
 - `untangle quality report [path]` combines structural metrics, hotspots, function quality, architecture analysis, and priority actions.
@@ -82,6 +90,9 @@ untangle quality report ./src --coverage lcov.info --lang rust --format text
 | `scc-growth` | An existing circular cluster gained members |
 | `entropy-increase` | Graph-level mean entropy increased |
 | `new-edge` | Any new dependency edge was added (strict mode) |
+| `new-architecture-violation` | A projected component boundary violation appears in `head` but not `base` |
+| `new-architecture-cycle` | A new projected component cycle appears in `head` |
+| `architecture-cycle-growth` | A projected component cycle in `head` grew relative to `base` |
 
 ## Configuration
 
@@ -106,10 +117,19 @@ format = "dot"
 
 [analyze.architecture]
 format = "dot"
+level = 1
+check_format = "text"
+fail_on_violations = true
+fail_on_cycles = true
+
+[analyze.architecture.allowed_dependencies]
+api = ["db", "utils"]
+db = []
+utils = []
 
 [diff]
 format = "json"
-fail_on = ["fanout-increase", "new-scc", "scc-growth"]
+fail_on = ["fanout-increase", "new-scc", "scc-growth", "new-architecture-violation"]
 
 [quality]
 format = "text"

@@ -1,5 +1,7 @@
 pub mod analyze;
 pub mod architecture;
+pub mod architecture_check;
+pub mod architecture_init;
 pub mod common;
 pub mod config;
 pub mod diff;

@@ -56,10 +56,36 @@ min_entropy = 2.5         # Minimum Shannon entropy (default: 2.5)
 min_fanout = 5            # Minimum fan-out to consider (default: 5)
 
 # ============================================================
+# [analyze.architecture] — Projected architecture policy
+# ============================================================
+[analyze.architecture]
+format = "dot"            # View output format: json, dot
+level = 1                 # Projection depth
+check_format = "text"     # Check output format: text, json
+fail_on_violations = true # Exit non-zero on boundary violations
+fail_on_cycles = true     # Exit non-zero on projected component cycles
+ignored_components = []   # Remove projected components from policy evaluation
+
+[analyze.architecture.allowed_dependencies]
+api = ["db", "utils"]     # "*" allows all outbound dependencies
+db = []
+utils = []
+
+[[analyze.architecture.forbidden_dependencies]]
+from = "api"
+to = "db"
+
+[[analyze.architecture.exceptions]]
+from_component = "api"
+to_component = "db"
+from_module = "src.api.handler"
+to_module = "src.db.__init__"
+
+# ============================================================
 # [fail_on] — CI failure conditions
 # ============================================================
 [fail_on]
-conditions = ["fanout-increase", "new-scc", "scc-growth"]
+conditions = ["fanout-increase", "new-scc", "scc-growth", "new-architecture-violation"]
 
 # ============================================================
 # Language-specific settings

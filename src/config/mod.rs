@@ -6,7 +6,7 @@ pub mod schema;
 pub mod show;
 
 use crate::formats::{
-    AnalyzeReportFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
+    AnalyzeReportFormat, ArchitectureCheckFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
     ServiceGraphFormat,
 };
 use crate::walk::Language;
@@ -26,6 +26,18 @@ pub(crate) mod keys {
     pub const ANALYZE_GRAPH_FORMAT: &str = "analyze.graph.format";
     pub const ANALYZE_ARCHITECTURE_FORMAT: &str = "analyze.architecture.format";
     pub const ANALYZE_ARCHITECTURE_LEVEL: &str = "analyze.architecture.level";
+    pub const ANALYZE_ARCHITECTURE_CHECK_FORMAT: &str = "analyze.architecture.check_format";
+    pub const ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS: &str =
+        "analyze.architecture.fail_on_violations";
+    pub const ANALYZE_ARCHITECTURE_FAIL_ON_CYCLES: &str =
+        "analyze.architecture.fail_on_cycles";
+    pub const ANALYZE_ARCHITECTURE_IGNORED_COMPONENTS: &str =
+        "analyze.architecture.ignored_components";
+    pub const ANALYZE_ARCHITECTURE_ALLOWED_DEPENDENCIES: &str =
+        "analyze.architecture.allowed_dependencies";
+    pub const ANALYZE_ARCHITECTURE_FORBIDDEN_DEPENDENCIES: &str =
+        "analyze.architecture.forbidden_dependencies";
+    pub const ANALYZE_ARCHITECTURE_EXCEPTIONS: &str = "analyze.architecture.exceptions";
     pub const DIFF_FORMAT: &str = "diff.format";
     pub const QUALITY_FUNCTIONS_FORMAT: &str = "quality.functions.format";
     pub const QUALITY_FUNCTIONS_TOP: &str = "quality.functions.top";
@@ -67,6 +79,13 @@ pub(crate) mod keys {
         ANALYZE_GRAPH_FORMAT,
         ANALYZE_ARCHITECTURE_FORMAT,
         ANALYZE_ARCHITECTURE_LEVEL,
+        ANALYZE_ARCHITECTURE_CHECK_FORMAT,
+        ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS,
+        ANALYZE_ARCHITECTURE_FAIL_ON_CYCLES,
+        ANALYZE_ARCHITECTURE_IGNORED_COMPONENTS,
+        ANALYZE_ARCHITECTURE_ALLOWED_DEPENDENCIES,
+        ANALYZE_ARCHITECTURE_FORBIDDEN_DEPENDENCIES,
+        ANALYZE_ARCHITECTURE_EXCEPTIONS,
         DIFF_FORMAT,
         QUALITY_FUNCTIONS_FORMAT,
         QUALITY_FUNCTIONS_TOP,
@@ -179,6 +198,13 @@ impl Default for ResolvedGraphConfig {
 pub struct ResolvedArchitectureConfig {
     pub format: ArchitectureFormat,
     pub level: usize,
+    pub check_format: ArchitectureCheckFormat,
+    pub fail_on_violations: bool,
+    pub fail_on_cycles: bool,
+    pub ignored_components: Vec<String>,
+    pub allowed_dependencies: std::collections::BTreeMap<String, Vec<String>>,
+    pub forbidden_dependencies: Vec<ArchitectureForbiddenDependency>,
+    pub exceptions: Vec<ArchitectureException>,
 }
 
 impl Default for ResolvedArchitectureConfig {
@@ -186,8 +212,29 @@ impl Default for ResolvedArchitectureConfig {
         Self {
             format: ArchitectureFormat::Dot,
             level: 1,
+            check_format: ArchitectureCheckFormat::Text,
+            fail_on_violations: true,
+            fail_on_cycles: true,
+            ignored_components: Vec::new(),
+            allowed_dependencies: std::collections::BTreeMap::new(),
+            forbidden_dependencies: Vec::new(),
+            exceptions: Vec::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ArchitectureForbiddenDependency {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ArchitectureException {
+    pub from_component: Option<String>,
+    pub to_component: Option<String>,
+    pub from_module: Option<String>,
+    pub to_module: Option<String>,
 }
 
 #[derive(Debug, Clone)]

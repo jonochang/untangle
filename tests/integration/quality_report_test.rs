@@ -1,4 +1,26 @@
 use assert_cmd::Command;
+use std::path::{Path, PathBuf};
+
+fn fixture_path(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("fixtures")
+        .join(name)
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    for entry in std::fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        let dest_path = dst.join(entry.file_name());
+        if path.is_dir() {
+            std::fs::create_dir_all(&dest_path).unwrap();
+            copy_dir_recursive(&path, &dest_path);
+        } else {
+            std::fs::copy(&path, &dest_path).unwrap();
+        }
+    }
+}
 
 #[test]
 fn quality_report_json_includes_unified_sections() {
@@ -143,4 +165,53 @@ fn quality_report_text_uses_na_coverage_without_coverage_file() {
     let text = String::from_utf8(output).unwrap();
     assert!(text.contains("cov=N/A"));
     assert!(text.contains("with N/A coverage."));
+}
+
+#[test]
+fn quality_report_json_includes_architecture_component_metrics_and_policy_summary() {
+    let src = fixture_path("quality_report");
+    let tmp = tempfile::tempdir().unwrap();
+    let dest = tmp.path().join("project");
+    std::fs::create_dir_all(&dest).unwrap();
+    copy_dir_recursive(&src, &dest);
+    std::fs::write(
+        dest.join(".untangle.toml"),
+        r#"
+[analyze.architecture]
+level = 1
+
+[analyze.architecture.allowed_dependencies]
+api = ["db"]
+service = ["api", "db"]
+db = []
+"#,
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("untangle")
+        .unwrap()
+        .args([
+            "quality",
+            "report",
+            dest.to_str().unwrap(),
+            "--lang",
+            "python",
+            "--format",
+            "json",
+            "--quiet",
+        ])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    let architecture = &json["report"]["architecture"];
+    assert!(architecture["component_metrics"].as_array().unwrap().len() >= 3);
+    assert!(architecture["cycles"].as_array().unwrap().len() >= 1);
+    assert_eq!(architecture["policy"]["verdict"], "fail");
+    assert_eq!(architecture["policy"]["violation_count"], 1);
+    assert_eq!(architecture["policy"]["top_violations"][0]["from"], "api");
+    assert_eq!(architecture["policy"]["top_violations"][0]["to"], "service");
 }

@@ -1,6 +1,7 @@
 #[allow(deprecated)]
 mod integration {
     mod analyze_test;
+    mod architecture_policy_test;
     mod architecture_test;
     mod ci_exit_codes_test;
     mod config_test;

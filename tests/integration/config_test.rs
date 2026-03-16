@@ -107,6 +107,44 @@ fn config_explain_unknown_category() {
 }
 
 #[test]
+fn config_explain_architecture_policy() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(
+        tmp.path().join(".untangle.toml"),
+        r#"
+[analyze.architecture]
+level = 2
+check_format = "json"
+fail_on_violations = false
+
+[analyze.architecture.allowed_dependencies]
+api = ["db"]
+"#,
+    )
+    .unwrap();
+
+    let mut cmd = Command::cargo_bin("untangle").unwrap();
+    cmd.args([
+        "config",
+        "explain",
+        "architecture_policy",
+        tmp.path().to_str().unwrap(),
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Rule: architecture_policy"))
+        .stdout(predicate::str::contains(
+            "analyze.architecture.level: 2 <- project config",
+        ))
+        .stdout(predicate::str::contains(
+            "analyze.architecture.check_format: json <- project config",
+        ))
+        .stdout(predicate::str::contains(
+            "analyze.architecture.allowed_dependencies: {\"api\": [\"db\"]} <- project config",
+        ));
+}
+
+#[test]
 fn analyze_report_respects_config_insights() {
     let go_fixture = fixture_path("go/simple_module");
     let tmp = tempfile::tempdir().unwrap();

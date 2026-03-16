@@ -1,3 +1,7 @@
+use crate::architecture::policy::{
+    self, ArchitectureCheckResult, ArchitectureCycle, ArchitectureViolation,
+};
+use crate::config::ResolvedArchitectureConfig;
 use crate::errors::Result;
 use crate::graph::builder::{GraphBuilder, ResolvedImport};
 use crate::graph::ir::DepGraph;
@@ -28,6 +32,8 @@ pub struct DiffResult {
     pub removed_edges: Vec<EdgeChange>,
     pub fanout_changes: Vec<FanoutChange>,
     pub scc_changes: SccChanges,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub architecture_policy_delta: Option<ArchitecturePolicyDelta>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -83,6 +89,13 @@ pub struct SccChange {
     pub size: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ArchitecturePolicyDelta {
+    pub new_violations: Vec<ArchitectureViolation>,
+    pub new_cycles: Vec<ArchitectureCycle>,
+    pub enlarged_cycles: Vec<ArchitectureCycle>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FailCondition {
     FanoutIncrease,
@@ -91,6 +104,9 @@ pub enum FailCondition {
     SccGrowth,
     EntropyIncrease,
     NewEdge,
+    NewArchitectureViolation,
+    NewArchitectureCycle,
+    ArchitectureCycleGrowth,
 }
 
 impl FailCondition {
@@ -101,6 +117,9 @@ impl FailCondition {
             "scc-growth" => Some(Self::SccGrowth),
             "entropy-increase" => Some(Self::EntropyIncrease),
             "new-edge" => Some(Self::NewEdge),
+            "new-architecture-violation" => Some(Self::NewArchitectureViolation),
+            "new-architecture-cycle" => Some(Self::NewArchitectureCycle),
+            "architecture-cycle-growth" => Some(Self::ArchitectureCycleGrowth),
             value if value.starts_with("fanout-threshold") => value
                 .split('=')
                 .nth(1)
@@ -124,6 +143,7 @@ pub struct DiffAnalysisRequest<'a> {
     pub ruby_load_paths: &'a [PathBuf],
     pub ruby_zeitwerk: bool,
     pub conditions: &'a [FailCondition],
+    pub architecture_config: Option<&'a ResolvedArchitectureConfig>,
 }
 
 pub fn analyze_repo_diff(request: DiffAnalysisRequest<'_>) -> Result<DiffResult> {
@@ -154,7 +174,11 @@ pub fn analyze_repo_diff(request: DiffAnalysisRequest<'_>) -> Result<DiffResult>
     )?;
 
     let diff = compute_raw_diff(&base_graph, &head_graph);
-    let (verdict, reasons) = evaluate_policies(&diff, request.conditions);
+    let architecture_policy_delta = request
+        .architecture_config
+        .map(|config| compute_architecture_policy_delta(&base_graph, &head_graph, request.root, config));
+    let (verdict, reasons) =
+        evaluate_policies(&diff, architecture_policy_delta.as_ref(), request.conditions);
     let elapsed_ms = start.elapsed().as_millis() as u64;
     let total_nodes = base_graph.node_count() + head_graph.node_count();
     let modules_per_second = if elapsed_ms > 0 {
@@ -175,6 +199,7 @@ pub fn analyze_repo_diff(request: DiffAnalysisRequest<'_>) -> Result<DiffResult>
         removed_edges: diff.removed_edges,
         fanout_changes: diff.fanout_changes,
         scc_changes: diff.scc_changes,
+        architecture_policy_delta,
     })
 }
 
@@ -654,7 +679,98 @@ fn compute_raw_diff(base: &DepGraph, head: &DepGraph) -> RawDiff {
     }
 }
 
-fn evaluate_policies(diff: &RawDiff, conditions: &[FailCondition]) -> (Verdict, Vec<String>) {
+fn compute_architecture_policy_delta(
+    base_graph: &DepGraph,
+    head_graph: &DepGraph,
+    root: &Path,
+    config: &ResolvedArchitectureConfig,
+) -> ArchitecturePolicyDelta {
+    let base = policy::check_graph(base_graph, root, config, Some(config.level));
+    let head = policy::check_graph(head_graph, root, config, Some(config.level));
+
+    let base_violations: HashSet<(String, String)> = base
+        .violations
+        .iter()
+        .map(|violation| (violation.from.clone(), violation.to.clone()))
+        .collect();
+    let new_violations = head
+        .violations
+        .iter()
+        .filter(|violation| {
+            !base_violations.contains(&(violation.from.clone(), violation.to.clone()))
+        })
+        .cloned()
+        .collect();
+
+    let (new_cycles, enlarged_cycles) = diff_cycles(&base, &head);
+
+    ArchitecturePolicyDelta {
+        new_violations,
+        new_cycles,
+        enlarged_cycles,
+    }
+}
+
+fn diff_cycles(
+    base: &ArchitectureCheckResult,
+    head: &ArchitectureCheckResult,
+) -> (Vec<ArchitectureCycle>, Vec<ArchitectureCycle>) {
+    let mut matched_base: HashSet<usize> = HashSet::new();
+    let mut matched_head: HashSet<usize> = HashSet::new();
+    let mut enlarged_cycles = Vec::new();
+
+    for (head_idx, head_cycle) in head.cycles.iter().enumerate() {
+        let head_members: HashSet<&String> = head_cycle.members.iter().collect();
+        let mut best_match = None;
+        let mut best_jaccard = 0.0f64;
+
+        for (base_idx, base_cycle) in base.cycles.iter().enumerate() {
+            if matched_base.contains(&base_idx) {
+                continue;
+            }
+
+            let base_members: HashSet<&String> = base_cycle.members.iter().collect();
+            let intersection = head_members.intersection(&base_members).count() as f64;
+            let union = head_members.union(&base_members).count() as f64;
+            let jaccard = if union > 0.0 {
+                intersection / union
+            } else {
+                0.0
+            };
+
+            if jaccard > best_jaccard {
+                best_jaccard = jaccard;
+                best_match = Some(base_idx);
+            }
+        }
+
+        if best_jaccard > 0.5 {
+            if let Some(base_idx) = best_match {
+                matched_base.insert(base_idx);
+                matched_head.insert(head_idx);
+                if head_cycle.size > base.cycles[base_idx].size {
+                    enlarged_cycles.push(head_cycle.clone());
+                }
+            }
+        }
+    }
+
+    let new_cycles = head
+        .cycles
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| !matched_head.contains(idx))
+        .map(|(_, cycle)| cycle.clone())
+        .collect();
+
+    (new_cycles, enlarged_cycles)
+}
+
+fn evaluate_policies(
+    diff: &RawDiff,
+    architecture_policy_delta: Option<&ArchitecturePolicyDelta>,
+    conditions: &[FailCondition],
+) -> (Verdict, Vec<String>) {
     let mut reasons = Vec::new();
 
     for condition in conditions {
@@ -691,6 +807,25 @@ fn evaluate_policies(diff: &RawDiff, conditions: &[FailCondition]) -> (Verdict, 
             FailCondition::NewEdge => {
                 if !diff.new_edges.is_empty() {
                     reasons.push("new-edge".to_string());
+                }
+            }
+            FailCondition::NewArchitectureViolation => {
+                if architecture_policy_delta
+                    .is_some_and(|delta| !delta.new_violations.is_empty())
+                {
+                    reasons.push("new-architecture-violation".to_string());
+                }
+            }
+            FailCondition::NewArchitectureCycle => {
+                if architecture_policy_delta.is_some_and(|delta| !delta.new_cycles.is_empty()) {
+                    reasons.push("new-architecture-cycle".to_string());
+                }
+            }
+            FailCondition::ArchitectureCycleGrowth => {
+                if architecture_policy_delta
+                    .is_some_and(|delta| !delta.enlarged_cycles.is_empty())
+                {
+                    reasons.push("architecture-cycle-growth".to_string());
                 }
             }
         }

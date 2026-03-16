@@ -1,3 +1,5 @@
+pub mod policy;
+
 use crate::errors::Result;
 use crate::graph::ir::{DepGraph, GraphNode};
 use petgraph::visit::EdgeRef;
@@ -218,6 +220,10 @@ pub fn layer_map(output: &ArchitectureOutput) -> BTreeMap<String, usize> {
         .iter()
         .map(|node| (node.id.clone(), node.layer))
         .collect()
+}
+
+pub(crate) fn project_component_id(node: &GraphNode, level: usize) -> String {
+    project_node(node, level)
 }
 
 fn project_node(node: &GraphNode, level: usize) -> String {

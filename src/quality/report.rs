@@ -1,8 +1,9 @@
 use crate::analysis_context::resolve_project_root;
 use crate::analysis_report::build_analysis_snapshot;
 use crate::architecture::{
-    self, ArchitectureEdge, ArchitectureEdgeRef, ArchitectureLayer, ArchitectureMetadata,
-    ArchitectureNode,
+    self,
+    policy::{self, ArchitectureCheckResult, ArchitectureComponentMetric, ArchitectureCycle, ArchitectureVerdict},
+    ArchitectureEdge, ArchitectureEdgeRef, ArchitectureLayer, ArchitectureMetadata, ArchitectureNode,
 };
 use crate::config::ResolvedConfig;
 use crate::errors::Result;
@@ -95,6 +96,10 @@ pub struct ArchitectureSection {
     pub edges: Vec<ArchitectureEdge>,
     pub feedback_edges: Vec<ArchitectureEdgeRef>,
     pub layers: Vec<ArchitectureLayer>,
+    pub component_metrics: Vec<ArchitectureComponentMetric>,
+    pub cycles: Vec<ArchitectureCycle>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy: Option<ArchitecturePolicySummary>,
     pub dot: String,
 }
 
@@ -104,6 +109,14 @@ pub struct ArchitectureSummary {
     pub dependency_count: usize,
     pub feedback_edge_count: usize,
     pub layer_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArchitecturePolicySummary {
+    pub verdict: ArchitectureVerdict,
+    pub violation_count: usize,
+    pub cycle_count: usize,
+    pub top_violations: Vec<policy::ArchitectureViolation>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -166,6 +179,12 @@ pub fn run(config: UnifiedRunConfig) -> Result<UnifiedQualityReport> {
         .max(1);
     let architecture =
         architecture::project_architecture(&snapshot.graph, &project_root, architecture_level);
+    let architecture_check = policy::check_graph(
+        &snapshot.graph,
+        &project_root,
+        &config.resolved.analyze_architecture,
+        Some(architecture_level),
+    );
     let architecture_dot = render_architecture_dot(&architecture)?;
     let function_summary = summarize_function_results(function_metric, &function_report.results);
     let function_results = limit_results(function_report.results.clone(), limit);
@@ -212,6 +231,9 @@ pub fn run(config: UnifiedRunConfig) -> Result<UnifiedQualityReport> {
             edges: architecture.edges,
             feedback_edges: architecture.feedback_edges,
             layers: architecture.layers,
+            component_metrics: architecture_check.components.clone(),
+            cycles: architecture_check.cycles.clone(),
+            policy: architecture_policy_summary(&config.resolved, &architecture_check, limit),
             dot: architecture_dot,
         },
         priorities,
@@ -222,6 +244,34 @@ fn render_architecture_dot(architecture: &architecture::ArchitectureOutput) -> R
     let mut buf = Vec::new();
     architecture::write_dot(&mut buf, architecture)?;
     Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+fn architecture_policy_summary(
+    resolved: &ResolvedConfig,
+    check: &ArchitectureCheckResult,
+    limit: Option<usize>,
+) -> Option<ArchitecturePolicySummary> {
+    let has_policy = !resolved.analyze_architecture.allowed_dependencies.is_empty()
+        || !resolved.analyze_architecture.forbidden_dependencies.is_empty()
+        || !resolved.analyze_architecture.exceptions.is_empty()
+        || !resolved.analyze_architecture.ignored_components.is_empty();
+    if !has_policy {
+        return None;
+    }
+
+    let mut top_violations = check.violations.clone();
+    if let Some(limit) = limit {
+        top_violations.truncate(limit.min(5));
+    } else {
+        top_violations.truncate(5);
+    }
+
+    Some(ArchitecturePolicySummary {
+        verdict: check.summary.verdict.clone(),
+        violation_count: check.summary.violation_count,
+        cycle_count: check.summary.cycle_count,
+        top_violations,
+    })
 }
 
 fn summarize_function_results(
@@ -640,6 +690,30 @@ fn write_architecture_section<W: Write>(
         writeln!(writer, "  Feedback edges:")?;
         for edge in &architecture.feedback_edges {
             writeln!(writer, "    {} -> {}", edge.from, edge.to)?;
+        }
+    }
+    if !architecture.component_metrics.is_empty() {
+        writeln!(writer, "  Component metrics:")?;
+        for component in architecture.component_metrics.iter().take(5) {
+            writeln!(
+                writer,
+                "    {} fan_in={} fan_out={} instability={:.3}",
+                component.id, component.fan_in, component.fan_out, component.instability
+            )?;
+        }
+    }
+    if let Some(policy) = &architecture.policy {
+        writeln!(
+            writer,
+            "  Policy: {:?} violations={} cycles={}",
+            policy.verdict, policy.violation_count, policy.cycle_count
+        )?;
+        for violation in &policy.top_violations {
+            writeln!(
+                writer,
+                "    violation: {} -> {} ({:?})",
+                violation.from, violation.to, violation.kind
+            )?;
         }
     }
     Ok(())

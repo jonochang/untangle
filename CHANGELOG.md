@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.2] - 2026-03-17
+
+### Added
+
+- `untangle analyze architecture-check`, a projected architecture policy checker with text and JSON output, component metrics, boundary violations, cycle detection, and source-location evidence.
+- `untangle analyze architecture-init`, which infers a starter architecture allowlist from the current projected component graph and writes it into `.untangle.toml`.
+- Architecture-policy-aware diff gating with `new-architecture-violation`, `new-architecture-cycle`, and `architecture-cycle-growth`.
+- Quality report coverage for embedded architecture component metrics and policy summaries, plus new integration coverage for architecture policy, config explain, and git-based architecture diff regressions.
+
+### Changed
+
+- Extended `[analyze.architecture]` config to carry policy state such as allowlists, forbidden dependencies, exceptions, ignored components, and check output defaults.
+- Surfaced architecture policy provenance through `config show` and `config explain architecture_policy`.
+- Refreshed README and docs to cover architecture checking, starter policy generation, and the new diff conditions.
+
 ## [0.5.1] - 2026-03-16
 
 ### Changed
