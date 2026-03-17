@@ -27,7 +27,7 @@ pub fn load_dependency_graph(
                 lang,
                 config,
                 &context.go_module_path,
-                &context.rust_crate_name,
+                &context.rust_workspace,
             );
             (lang, frontend)
         })
@@ -49,7 +49,7 @@ pub fn load_dependency_graph(
         Language::Go,
         config,
         &context.go_module_path,
-        &context.rust_crate_name,
+        &context.rust_workspace,
     );
 
     let go_files_by_module: HashMap<PathBuf, Vec<PathBuf>> =
@@ -85,9 +85,14 @@ pub fn load_dependency_graph(
         };
 
         let frontend =
-            factory::create_frontend(*lang, config, &file_go_module, &context.rust_crate_name);
+            factory::create_frontend(*lang, config, &file_go_module, &context.rust_workspace);
         let imports = frontend.extract_imports(&source, file_path);
-        let source_module = factory::source_module_path(file_path, &context.project_root, *lang);
+        let source_module = factory::source_module_path(
+            file_path,
+            &context.project_root,
+            *lang,
+            context.rust_workspace.as_ref(),
+        );
 
         let (resolver, lang_files): (&dyn ParseFrontend, Vec<PathBuf>) = if *lang == Language::Go {
             let mod_root = walk::find_go_module_root(file_path, &context.go_modules)

@@ -160,10 +160,14 @@ pub fn build_analysis_snapshot(
             };
 
             let frontend =
-                factory::create_frontend(*lang, config, &file_go_module, &context.rust_crate_name);
+                factory::create_frontend(*lang, config, &file_go_module, &context.rust_workspace);
             let imports = frontend.extract_imports(&source, file_path);
-            let source_module =
-                factory::source_module_path(file_path, &context.project_root, *lang);
+            let source_module = factory::source_module_path(
+                file_path,
+                &context.project_root,
+                *lang,
+                context.rust_workspace.as_ref(),
+            );
 
             if let Some(ref progress) = progress {
                 progress.inc(1);
@@ -194,7 +198,7 @@ pub fn build_analysis_snapshot(
                 lang,
                 config,
                 &context.go_module_path,
-                &context.rust_crate_name,
+                &context.rust_workspace,
             );
             (lang, frontend)
         })
@@ -215,7 +219,7 @@ pub fn build_analysis_snapshot(
         Language::Go,
         config,
         &context.go_module_path,
-        &context.rust_crate_name,
+        &context.rust_workspace,
     );
     let go_files_by_module = group_go_files_by_module(&context);
     let files_by_lang_for_resolve: HashMap<Language, Vec<PathBuf>> = context

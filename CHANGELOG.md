@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.4] - 2026-03-17
+
+### Fixed
+
+- Resolve Rust imports correctly when scanning Cargo workspaces from the workspace root by mapping each source file to its owning package instead of assuming one global crate root.
+- Support inter-crate Rust edges for workspace members such as `foo_bar::...` imports while preserving `crate::`, `self::`, and `super::` resolution within each package.
+- Add workspace regression coverage so `analyze report` no longer emits empty structural graphs for multi-crate Rust workspaces.
+
 ## [0.5.3] - 2026-03-17
 
 ### Added

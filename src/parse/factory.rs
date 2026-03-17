@@ -1,3 +1,4 @@
+use crate::analysis_context::RustWorkspaceContext;
 use crate::config::ResolvedConfig;
 use crate::parse::go::GoFrontend;
 use crate::parse::python::PythonFrontend;
@@ -12,7 +13,7 @@ pub fn create_frontend(
     lang: Language,
     config: &ResolvedConfig,
     go_module_path: &Option<String>,
-    rust_crate_name: &Option<String>,
+    rust_workspace: &Option<RustWorkspaceContext>,
 ) -> Box<dyn ParseFrontend> {
     match lang {
         Language::Go => {
@@ -27,8 +28,8 @@ pub fn create_frontend(
             RubyFrontend::with_load_paths(config.ruby_load_paths())
                 .with_zeitwerk(config.ruby.zeitwerk),
         ),
-        Language::Rust => Box::new(match rust_crate_name {
-            Some(name) => RustFrontend::with_crate_name(name.clone()),
+        Language::Rust => Box::new(match rust_workspace {
+            Some(workspace) => RustFrontend::with_workspace(workspace.clone()),
             None => RustFrontend::new(),
         }),
     }
@@ -39,7 +40,18 @@ pub fn source_module_path(
     file_path: &std::path::Path,
     root: &std::path::Path,
     lang: Language,
+    rust_workspace: Option<&RustWorkspaceContext>,
 ) -> PathBuf {
+    if lang == Language::Rust {
+        if let Some(workspace) = rust_workspace {
+            if let Some(package) = workspace.find_package_for_file(file_path, root) {
+                if let Some(module_id) = package.module_id_for_file(file_path) {
+                    return module_id;
+                }
+            }
+        }
+    }
+
     let relative = file_path.strip_prefix(root).unwrap_or(file_path);
     if lang == Language::Go {
         relative.parent().unwrap_or(relative).to_path_buf()

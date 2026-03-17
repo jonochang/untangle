@@ -8,7 +8,8 @@ mod integration {
     mod diff_test;
     mod polyglot_test;
     mod quality_report_test;
-    mod spec_quality_test;
     mod quality_test;
+    mod rust_workspace_test;
     mod service_graph_test;
+    mod spec_quality_test;
 }
