@@ -24,6 +24,7 @@ pub struct DiffResult {
     pub base_ref: String,
     pub head_ref: String,
     pub verdict: Verdict,
+    pub comparison: Comparison,
     pub reasons: Vec<String>,
     pub elapsed_ms: u64,
     pub modules_per_second: f64,
@@ -41,6 +42,23 @@ pub struct DiffResult {
 pub enum Verdict {
     Pass,
     Fail,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Comparison {
+    pub verdict: ComparisonVerdict,
+    pub summary: String,
+    pub recommendation: String,
+    pub drivers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComparisonVerdict {
+    Improved,
+    Worse,
+    Mixed,
+    Unchanged,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -191,6 +209,7 @@ pub fn analyze_repo_diff(request: DiffAnalysisRequest<'_>) -> Result<DiffResult>
         base_ref: request.base_ref.to_string(),
         head_ref: request.head_ref.to_string(),
         verdict,
+        comparison: compare_diff(&diff, architecture_policy_delta.as_ref()),
         reasons,
         elapsed_ms,
         modules_per_second: (modules_per_second * 10.0).round() / 10.0,
@@ -201,6 +220,134 @@ pub fn analyze_repo_diff(request: DiffAnalysisRequest<'_>) -> Result<DiffResult>
         scc_changes: diff.scc_changes,
         architecture_policy_delta,
     })
+}
+
+fn compare_diff(diff: &RawDiff, architecture_policy_delta: Option<&ArchitecturePolicyDelta>) -> Comparison {
+    let mut improvements = Vec::new();
+    let mut regressions = Vec::new();
+
+    if diff.summary_delta.net_edge_change < 0 {
+        improvements.push(format!(
+            "net edge count decreased by {}",
+            -diff.summary_delta.net_edge_change
+        ));
+    } else if diff.summary_delta.net_edge_change > 0 {
+        regressions.push(format!(
+            "net edge count increased by {}",
+            diff.summary_delta.net_edge_change
+        ));
+    }
+
+    if diff.summary_delta.scc_count_delta < 0 {
+        improvements.push(format!(
+            "scc count dropped by {}",
+            -diff.summary_delta.scc_count_delta
+        ));
+    } else if diff.summary_delta.scc_count_delta > 0 {
+        regressions.push(format!(
+            "scc count increased by {}",
+            diff.summary_delta.scc_count_delta
+        ));
+    }
+
+    if diff.summary_delta.mean_fanout_delta < -0.05 {
+        improvements.push(format!(
+            "mean fan-out decreased by {:.2}",
+            -diff.summary_delta.mean_fanout_delta
+        ));
+    } else if diff.summary_delta.mean_fanout_delta > 0.05 {
+        regressions.push(format!(
+            "mean fan-out increased by {:.2}",
+            diff.summary_delta.mean_fanout_delta
+        ));
+    }
+
+    if diff.summary_delta.total_complexity_delta < 0 {
+        improvements.push(format!(
+            "total complexity dropped by {}",
+            -diff.summary_delta.total_complexity_delta
+        ));
+    } else if diff.summary_delta.total_complexity_delta > 0 {
+        regressions.push(format!(
+            "total complexity increased by {}",
+            diff.summary_delta.total_complexity_delta
+        ));
+    }
+
+    if let Some(delta) = architecture_policy_delta {
+        if !delta.new_violations.is_empty() {
+            regressions.push(format!(
+                "{} new architecture violation(s)",
+                delta.new_violations.len()
+            ));
+        }
+        if !delta.new_cycles.is_empty() {
+            regressions.push(format!(
+                "{} new architecture cycle(s)",
+                delta.new_cycles.len()
+            ));
+        }
+        if !delta.enlarged_cycles.is_empty() {
+            regressions.push(format!(
+                "{} enlarged architecture cycle(s)",
+                delta.enlarged_cycles.len()
+            ));
+        }
+    }
+
+    let verdict = if improvements.is_empty() && regressions.is_empty() {
+        ComparisonVerdict::Unchanged
+    } else if improvements.is_empty() {
+        ComparisonVerdict::Worse
+    } else if regressions.is_empty() {
+        ComparisonVerdict::Improved
+    } else {
+        ComparisonVerdict::Mixed
+    };
+
+    let summary = match verdict {
+        ComparisonVerdict::Unchanged => {
+            "No material structural or architecture change was detected.".to_string()
+        }
+        ComparisonVerdict::Improved => {
+            format!("Change appears improved: {}.", improvements.join(", "))
+        }
+        ComparisonVerdict::Worse => {
+            format!("Change appears worse: {}.", regressions.join(", "))
+        }
+        ComparisonVerdict::Mixed => format!(
+            "Change is mixed: improved in {}, worse in {}.",
+            improvements.join(", "),
+            regressions.join(", ")
+        ),
+    };
+
+    let recommendation = if !regressions.is_empty() {
+        if regressions.iter().any(|item| item.contains("architecture")) {
+            "Review boundary changes first; architecture regressions tend to create lasting drag."
+                .to_string()
+        } else if regressions.iter().any(|item| item.contains("scc")) {
+            "Break new cycles before adding more dependencies on top of them.".to_string()
+        } else {
+            "Review the added coupling before treating this change as complete.".to_string()
+        }
+    } else if !improvements.is_empty() {
+        "The change reduced structural pressure; keep the same direction for adjacent cleanup."
+            .to_string()
+    } else {
+        "No follow-up is needed from the structural diff alone.".to_string()
+    };
+
+    let mut drivers = Vec::new();
+    drivers.extend(improvements.into_iter().take(2));
+    drivers.extend(regressions.into_iter().take(3));
+
+    Comparison {
+        verdict,
+        summary,
+        recommendation,
+        drivers,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]

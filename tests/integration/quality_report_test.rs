@@ -46,7 +46,7 @@ fn quality_report_json_includes_unified_sections() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["kind"], "quality.report");
-    assert_eq!(json["schema_version"], 4);
+    assert_eq!(json["schema_version"], 5);
 
     let report = &json["report"];
     assert!(report["structural"]["summary"].is_object());
@@ -68,6 +68,10 @@ fn quality_report_json_includes_unified_sections() {
         .as_str()
         .unwrap()
         .contains("digraph architecture"));
+    assert!(report["guidance"].is_object());
+    assert!(report["guidance"]["why"].as_array().unwrap().len() >= 3);
+    assert!(report["guidance"]["where"].as_array().unwrap().len() >= 1);
+    assert!(report["guidance"]["how"].as_array().unwrap().len() >= 1);
     assert!(!report["priorities"].as_array().unwrap().is_empty());
 }
 
@@ -129,6 +133,10 @@ fn quality_report_text_includes_priority_locations_and_evidence() {
         .clone();
 
     let text = String::from_utf8(output).unwrap();
+    assert!(text.contains("Guidance"));
+    assert!(text.contains("Remediation Mode:"));
+    assert!(text.contains("AI Guidance:"));
+    assert!(text.contains("How:"));
     assert!(text.contains("1. [architecture] Break architecture feedback from api to service"));
     assert!(text.contains("2. [function] Reduce crap score in handle"));
     assert!(text.contains("3. [structural] Reduce module fan-out in src.api.handler"));
@@ -214,4 +222,5 @@ db = []
     assert_eq!(architecture["policy"]["violation_count"], 1);
     assert_eq!(architecture["policy"]["top_violations"][0]["from"], "api");
     assert_eq!(architecture["policy"]["top_violations"][0]["to"], "service");
+    assert_eq!(json["report"]["guidance"]["pressure"], "medium");
 }

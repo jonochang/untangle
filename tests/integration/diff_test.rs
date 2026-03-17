@@ -50,9 +50,10 @@ fn diff_go_shows_changes() {
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["kind"], "diff.report");
-    assert_eq!(json["schema_version"], 2);
+    assert_eq!(json["schema_version"], 3);
     assert!(json["report"]["summary_delta"].is_object());
     assert!(json["report"]["verdict"].is_string());
+    assert!(json["report"]["comparison"]["verdict"].is_string());
 }
 
 #[test]
@@ -86,6 +87,7 @@ fn diff_text_output_includes_summary_sections() {
         .assert()
         .success()
         .stdout(predicate::str::contains("Untangle Diff Report"))
+        .stdout(predicate::str::contains("Comparison: unchanged"))
         .stdout(predicate::str::contains("Summary"))
         .stdout(predicate::str::contains("Verdict: Pass"))
         .stdout(predicate::str::contains("Completed in"));
@@ -208,6 +210,7 @@ def handle():
 
     let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(json["report"]["verdict"], "fail");
+    assert_eq!(json["report"]["comparison"]["verdict"], "worse");
     assert_eq!(json["report"]["reasons"][0], "new-architecture-violation");
     assert_eq!(
         json["report"]["architecture_policy_delta"]["new_violations"][0]["from"],

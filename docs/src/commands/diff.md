@@ -54,6 +54,7 @@ untangle diff ./src --base v1.0.0 --head v2.0.0 --lang python
 The diff output includes:
 
 - **verdict**: `pass` or `fail`
+- **comparison**: `improved`, `worse`, `mixed`, or `unchanged`
 - **reasons**: which fail-on conditions triggered (if any)
 - **summary_delta**: changes in node count, edge count, SCC count, mean fan-out, mean entropy, max depth, total complexity
 - **new_edges**: edges added between base and head
@@ -62,6 +63,9 @@ The diff output includes:
 - **scc_changes**: new SCCs, enlarged SCCs, and resolved (removed) SCCs
 
 Note: `dot` and `sarif` output are not supported for `diff` in v2.
+
+The comparison verdict is advisory. It does not change the pass/fail result by itself; it summarizes
+whether the structural trend of the change looks better, worse, mixed, or unchanged.
 
 ## Verdicts
 

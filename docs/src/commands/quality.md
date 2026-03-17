@@ -63,6 +63,7 @@ Compute the unified engineer-facing quality report. This combines:
 - structural metrics, hotspots, SCCs, and insights
 - function quality results (`crap` when `--coverage` is provided, otherwise `complexity`)
 - a layered architecture view with feedback edges and DOT output
+- a guidance layer with pressure, remediation mode, and ranked recommendations
 - a ranked list of priority actions
 
 ### Usage
@@ -93,3 +94,11 @@ untangle quality report . --lang python --format json
 ```
 
 Without coverage input, function rows show `coverage = N/A` and report complexity-based scores.
+
+The unified report now also includes a `guidance` section. It is a judgment layer over the raw
+metrics that answers:
+
+- whether the repository looks structurally stable enough to leave alone
+- whether cleanup should stay local or be split by concern first
+- which hotspots are driving the recommendation
+- which refactoring moves should come first

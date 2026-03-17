@@ -152,7 +152,7 @@ pub fn write_diff_json<W: Write>(writer: &mut W, diff: &DiffResult) -> Result<()
         writer,
         &serde_json::json!({
             "kind": "diff.report",
-            "schema_version": 2,
+            "schema_version": 3,
             "report": diff,
         }),
     )?;

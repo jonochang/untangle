@@ -37,7 +37,7 @@ Feature: Quality CLI
     Given the quality fixtures
     When I run the unified quality report without coverage in json format
     Then the unified quality report json uses null coverage
-    And the unified quality report json uses schema version 4
+    And the unified quality report json uses schema version 5
 
   Scenario: Minimum CC filter
     Given the quality fixtures

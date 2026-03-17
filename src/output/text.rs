@@ -1,5 +1,7 @@
 use crate::errors::Result;
-use crate::graph::diff::{DiffResult, EdgeChange, FanoutChange, SccChange, SummaryDelta};
+use crate::graph::diff::{
+    ComparisonVerdict, DiffResult, EdgeChange, FanoutChange, SccChange, SummaryDelta,
+};
 use crate::graph::ir::DepGraph;
 use crate::insights::{Insight, InsightSeverity};
 use crate::metrics::scc::SccInfo;
@@ -229,11 +231,30 @@ fn write_diff_header<W: Write>(writer: &mut W, result: &DiffResult) -> Result<()
     writeln!(writer, "Base: {}", result.base_ref)?;
     writeln!(writer, "Head: {}", result.head_ref)?;
     writeln!(writer, "Verdict: {:?}", result.verdict)?;
+    writeln!(
+        writer,
+        "Comparison: {}",
+        comparison_verdict_label(&result.comparison.verdict)
+    )?;
+    writeln!(writer, "Summary: {}", result.comparison.summary)?;
+    writeln!(writer, "Recommendation: {}", result.comparison.recommendation)?;
+    if !result.comparison.drivers.is_empty() {
+        writeln!(writer, "Drivers: {}", result.comparison.drivers.join(", "))?;
+    }
     if !result.reasons.is_empty() {
         writeln!(writer, "Violations: {}", result.reasons.join(", "))?;
     }
     writeln!(writer)?;
     Ok(())
+}
+
+fn comparison_verdict_label(verdict: &ComparisonVerdict) -> &'static str {
+    match verdict {
+        ComparisonVerdict::Improved => "improved",
+        ComparisonVerdict::Worse => "worse",
+        ComparisonVerdict::Mixed => "mixed",
+        ComparisonVerdict::Unchanged => "unchanged",
+    }
 }
 
 fn write_diff_summary<W: Write>(writer: &mut W, delta: &SummaryDelta) -> Result<()> {
@@ -303,7 +324,9 @@ fn write_scc_changes<W: Write>(writer: &mut W, label: &str, changes: &[SccChange
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::diff::{EdgeChange, FanoutChange, SccChange, SummaryDelta, Verdict};
+    use crate::graph::diff::{
+        Comparison, ComparisonVerdict, EdgeChange, FanoutChange, SccChange, SummaryDelta, Verdict,
+    };
     use crate::graph::ir::{EdgeKind, GraphEdge, GraphNode, NodeKind};
     use crate::parse::common::SourceLocation;
     use std::path::PathBuf;
@@ -377,6 +400,14 @@ mod tests {
             base_ref: "main".to_string(),
             head_ref: "HEAD".to_string(),
             verdict: Verdict::Fail,
+            comparison: Comparison {
+                verdict: ComparisonVerdict::Worse,
+                summary: "Change appears worse: net edge count increased by 1.".to_string(),
+                recommendation:
+                    "Review the added coupling before treating this change as complete."
+                        .to_string(),
+                drivers: vec!["net edge count increased by 1".to_string()],
+            },
             reasons: vec!["new-edge".to_string()],
             elapsed_ms: 850,
             modules_per_second: 12.0,
@@ -427,6 +458,7 @@ mod tests {
                 }],
                 resolved_sccs: vec![],
             },
+            architecture_policy_delta: None,
         }
     }
 

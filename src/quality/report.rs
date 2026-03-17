@@ -45,6 +45,7 @@ pub struct UnifiedQualityReport {
     pub structural: StructuralSection,
     pub functions: FunctionSection,
     pub architecture: ArchitectureSection,
+    pub guidance: GuidanceSection,
     pub priorities: Vec<PriorityAction>,
 }
 
@@ -117,6 +118,62 @@ pub struct ArchitecturePolicySummary {
     pub violation_count: usize,
     pub cycle_count: usize,
     pub top_violations: Vec<policy::ArchitectureViolation>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GuidanceSection {
+    pub pressure: GuidancePressure,
+    pub remediation_mode: GuidanceRemediationMode,
+    pub ai_actionability: GuidanceActionability,
+    pub ai_guidance: String,
+    pub why: Vec<GuidanceLine>,
+    #[serde(rename = "where")]
+    pub where_: Vec<GuidanceHotspot>,
+    pub how: Vec<GuidanceAction>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GuidancePressure {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GuidanceRemediationMode {
+    Stable,
+    Local,
+    Split,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GuidanceActionability {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GuidanceLine {
+    pub label: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GuidanceHotspot {
+    pub category: PriorityCategory,
+    pub title: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GuidanceAction {
+    pub confidence: u8,
+    pub label: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -195,6 +252,13 @@ pub fn run(config: UnifiedRunConfig) -> Result<UnifiedQualityReport> {
         &architecture,
         limit.unwrap_or(10).max(1),
     );
+    let guidance = build_guidance(
+        &snapshot,
+        &function_summary,
+        &architecture,
+        &architecture_check,
+        &priorities,
+    );
 
     Ok(UnifiedQualityReport {
         metadata: UnifiedQualityMetadata {
@@ -236,6 +300,7 @@ pub fn run(config: UnifiedRunConfig) -> Result<UnifiedQualityReport> {
             policy: architecture_policy_summary(&config.resolved, &architecture_check, limit),
             dot: architecture_dot,
         },
+        guidance,
         priorities,
     })
 }
@@ -272,6 +337,164 @@ fn architecture_policy_summary(
         cycle_count: check.summary.cycle_count,
         top_violations,
     })
+}
+
+fn build_guidance(
+    snapshot: &crate::analysis_report::AnalysisSnapshot,
+    functions: &FunctionSummary,
+    architecture: &architecture::ArchitectureOutput,
+    architecture_check: &ArchitectureCheckResult,
+    priorities: &[PriorityAction],
+) -> GuidanceSection {
+    let structural_severe = snapshot.summary.scc_count > 0
+        || snapshot.summary.max_fanout >= 4
+        || snapshot.summary.total_complexity >= 12;
+    let function_severe = functions.high_risk > 0 || functions.max_score >= 10.0;
+    let architecture_severe = architecture_check.summary.violation_count > 0
+        || architecture_check.summary.cycle_count > 0
+        || !architecture.feedback_edges.is_empty();
+    let severe_domains = [structural_severe, function_severe, architecture_severe]
+        .into_iter()
+        .filter(|flag| *flag)
+        .count();
+
+    let pressure = match severe_domains {
+        0 => GuidancePressure::Low,
+        1 => GuidancePressure::Medium,
+        _ => GuidancePressure::High,
+    };
+    let distinct_priority_categories = priorities
+        .iter()
+        .take(3)
+        .map(|action| priority_label(action.category))
+        .collect::<Vec<_>>();
+    let distinct_priority_categories = distinct_priority_categories
+        .iter()
+        .enumerate()
+        .filter(|(idx, label)| distinct_priority_categories[..*idx].iter().all(|seen| seen != *label))
+        .count();
+    let remediation_mode = if severe_domains >= 2 || distinct_priority_categories >= 2 {
+        GuidanceRemediationMode::Split
+    } else if severe_domains == 0 {
+        GuidanceRemediationMode::Stable
+    } else {
+        GuidanceRemediationMode::Local
+    };
+    let ai_actionability = match remediation_mode {
+        GuidanceRemediationMode::Stable => GuidanceActionability::Low,
+        GuidanceRemediationMode::Local => GuidanceActionability::Medium,
+        GuidanceRemediationMode::Split => GuidanceActionability::High,
+    };
+    let ai_guidance = match remediation_mode {
+        GuidanceRemediationMode::Stable => {
+            "No immediate refactor is recommended; keep the current hotspots under observation."
+        }
+        GuidanceRemediationMode::Local => {
+            "Target the top hotspot directly before attempting broad structural cleanup."
+        }
+        GuidanceRemediationMode::Split => {
+            "Pressure is spread across multiple areas; split the work by concern before local tuning."
+        }
+    }
+    .to_string();
+
+    let why = vec![
+        GuidanceLine {
+            label: "max_fanout".to_string(),
+            value: snapshot.summary.max_fanout.to_string(),
+        },
+        GuidanceLine {
+            label: "scc_count".to_string(),
+            value: snapshot.summary.scc_count.to_string(),
+        },
+        GuidanceLine {
+            label: "high_risk_functions".to_string(),
+            value: functions.high_risk.to_string(),
+        },
+        GuidanceLine {
+            label: "architecture_feedback_edges".to_string(),
+            value: architecture.feedback_edges.len().to_string(),
+        },
+        GuidanceLine {
+            label: "architecture_violations".to_string(),
+            value: architecture_check.summary.violation_count.to_string(),
+        },
+        GuidanceLine {
+            label: "architecture_cycles".to_string(),
+            value: architecture_check.summary.cycle_count.to_string(),
+        },
+    ];
+
+    let where_ = priorities
+        .iter()
+        .take(3)
+        .map(|action| GuidanceHotspot {
+            category: action.category,
+            title: action.title.clone(),
+            summary: action.summary.clone(),
+        })
+        .collect();
+
+    let mut how = Vec::new();
+    if architecture_check.summary.violation_count > 0 {
+        how.push(GuidanceAction {
+            confidence: 3,
+            label: "HIGH".to_string(),
+            text: "Fix architecture boundary violations before tuning lower-level metrics."
+                .to_string(),
+        });
+    }
+    if architecture_check.summary.cycle_count > 0 || !architecture.feedback_edges.is_empty() {
+        how.push(GuidanceAction {
+            confidence: 3,
+            label: "HIGH".to_string(),
+            text: "Break component cycles or feedback edges before moving code between modules."
+                .to_string(),
+        });
+    }
+    if functions.high_risk > 0 {
+        how.push(GuidanceAction {
+            confidence: 3,
+            label: "HIGH".to_string(),
+            text: "Reduce the highest-risk functions before broad cleanup so behavior stays easier to validate."
+                .to_string(),
+        });
+    }
+    if snapshot.summary.scc_count > 0 {
+        how.push(GuidanceAction {
+            confidence: 2,
+            label: "MEDIUM".to_string(),
+            text: "Untangle module cycles before extracting helpers or renaming modules."
+                .to_string(),
+        });
+    }
+    if snapshot.summary.max_fanout >= 4 {
+        how.push(GuidanceAction {
+            confidence: 2,
+            label: "MEDIUM".to_string(),
+            text: "Reduce fan-out in hotspot modules instead of applying repository-wide cleanup."
+                .to_string(),
+        });
+    }
+    if how.is_empty() {
+        how.push(GuidanceAction {
+            confidence: 3,
+            label: "HIGH".to_string(),
+            text: "No immediate refactor is recommended; leave the current structure in place."
+                .to_string(),
+        });
+    }
+    how.truncate(4);
+
+    GuidanceSection {
+        pressure,
+        remediation_mode,
+        ai_actionability,
+        ai_guidance,
+        why,
+        where_,
+        how,
+    }
 }
 
 fn summarize_function_results(
@@ -523,7 +746,7 @@ pub fn write_json<W: Write>(writer: &mut W, report: &UnifiedQualityReport) -> Re
         writer,
         &serde_json::json!({
             "kind": "quality.report",
-            "schema_version": 4,
+            "schema_version": 5,
             "report": report,
         }),
     )?;
@@ -541,10 +764,54 @@ pub fn write_text<W: Write>(writer: &mut W, report: &UnifiedQualityReport) -> Re
         writeln!(writer, "Coverage:  {}", coverage.display())?;
     }
     writeln!(writer)?;
+    write_guidance_section(writer, &report.guidance)?;
     write_priority_actions(writer, &report.priorities)?;
     write_structural_section(writer, &report.structural)?;
     write_function_section(writer, &report.functions)?;
     write_architecture_section(writer, &report.architecture)?;
+    Ok(())
+}
+
+fn write_guidance_section<W: Write>(writer: &mut W, guidance: &GuidanceSection) -> Result<()> {
+    writeln!(writer, "Guidance")?;
+    writeln!(writer, "--------")?;
+    writeln!(writer, "Pressure:         {}", guidance_pressure_label(guidance.pressure))?;
+    writeln!(
+        writer,
+        "Remediation Mode: {}",
+        guidance_remediation_mode_label(guidance.remediation_mode)
+    )?;
+    writeln!(
+        writer,
+        "AI Actionability: {}",
+        guidance_actionability_label(guidance.ai_actionability)
+    )?;
+    writeln!(writer, "AI Guidance:      {}", guidance.ai_guidance)?;
+    if !guidance.why.is_empty() {
+        writeln!(writer, "Why:")?;
+        for line in &guidance.why {
+            writeln!(writer, "  - {}={}", line.label, line.value)?;
+        }
+    }
+    if !guidance.where_.is_empty() {
+        writeln!(writer, "Where:")?;
+        for hotspot in &guidance.where_ {
+            writeln!(
+                writer,
+                "  - [{}] {}",
+                priority_label(hotspot.category),
+                hotspot.title
+            )?;
+            writeln!(writer, "    {}", hotspot.summary)?;
+        }
+    }
+    if !guidance.how.is_empty() {
+        writeln!(writer, "How:")?;
+        for action in &guidance.how {
+            writeln!(writer, "  - {}: {}", action.label, action.text)?;
+        }
+    }
+    writeln!(writer)?;
     Ok(())
 }
 
@@ -735,5 +1002,29 @@ fn priority_label(category: PriorityCategory) -> &'static str {
         PriorityCategory::Structural => "structural",
         PriorityCategory::Function => "function",
         PriorityCategory::Architecture => "architecture",
+    }
+}
+
+fn guidance_pressure_label(pressure: GuidancePressure) -> &'static str {
+    match pressure {
+        GuidancePressure::Low => "low",
+        GuidancePressure::Medium => "medium",
+        GuidancePressure::High => "high",
+    }
+}
+
+fn guidance_remediation_mode_label(mode: GuidanceRemediationMode) -> &'static str {
+    match mode {
+        GuidanceRemediationMode::Stable => "stable",
+        GuidanceRemediationMode::Local => "local",
+        GuidanceRemediationMode::Split => "split",
+    }
+}
+
+fn guidance_actionability_label(actionability: GuidanceActionability) -> &'static str {
+    match actionability {
+        GuidanceActionability::Low => "low",
+        GuidanceActionability::Medium => "medium",
+        GuidanceActionability::High => "high",
     }
 }

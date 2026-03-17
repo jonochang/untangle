@@ -479,12 +479,12 @@ fn unified_quality_report_json_uses_null_coverage(world: &mut CliWorld) {
         .all(|result| result["coverage_pct"] == serde_json::Value::Null));
 }
 
-#[then("the unified quality report json uses schema version 4")]
-fn unified_quality_report_json_uses_schema_version_4(world: &mut CliWorld) {
+#[then("the unified quality report json uses schema version 5")]
+fn unified_quality_report_json_uses_schema_version_5(world: &mut CliWorld) {
     let output = world.output.as_ref().expect("output available");
     assert!(output.status.success(), "command failed");
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
-    assert_eq!(json["schema_version"], 4);
+    assert_eq!(json["schema_version"], 5);
 }
 
 #[then("the output includes the crap report table")]

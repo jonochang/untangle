@@ -64,11 +64,14 @@ The `kind` value identifies the command/view that produced the payload.
 ```json
 {
   "kind": "diff.report",
-  "schema_version": 2,
+  "schema_version": 3,
   "report": {
     "base_ref": "origin/main",
     "head_ref": "HEAD",
-    "verdict": "fail"
+    "verdict": "fail",
+    "comparison": {
+      "verdict": "worse"
+    }
   }
 }
 ```
@@ -102,6 +105,21 @@ The `kind` value identifies the command/view that produced the payload.
       "metric": "overall"
     },
     "overall": {}
+  }
+}
+```
+
+```json
+{
+  "kind": "quality.report",
+  "schema_version": 5,
+  "report": {
+    "guidance": {
+      "pressure": "high",
+      "remediation_mode": "split",
+      "ai_actionability": "high"
+    },
+    "priorities": []
   }
 }
 ```
