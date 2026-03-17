@@ -5,6 +5,7 @@
 - `untangle quality functions [PATH]`
 - `untangle quality report [PATH]`
 - `untangle quality project [PATH]`
+- `untangle quality specs [PATH]`
 
 ## `quality functions`
 
@@ -102,3 +103,37 @@ metrics that answers:
 - whether cleanup should stay local or be split by concern first
 - which hotspots are driving the recommendation
 - which refactoring moves should come first
+
+## `quality specs`
+
+Analyze test/spec quality and emit file-level remediation guidance.
+
+### Usage
+
+```bash
+untangle quality specs [PATH] [OPTIONS]
+```
+
+### Options
+
+- `--lang <LANG>`: limit analysis to a language (`rust`, `go`, `python`, `ruby`)
+- `--format <FMT>`: `json` or `text`
+- `--top <N>`: limit the worst-example list
+- `--write-baseline`: write a baseline JSON report to `target/untangle/specs.json`
+- `--compare <FILE>`: compare the current report to an earlier baseline JSON file
+- `--include <GLOB>`: include glob patterns
+- `--exclude <GLOB>`: exclude glob patterns
+- `--quiet`: suppress progress output
+
+### Examples
+
+```bash
+untangle quality specs . --format text
+untangle quality specs . --format json --write-baseline
+untangle quality specs . --compare target/untangle/specs.json --format text
+```
+
+The spec-quality report focuses on test structure rather than production
+dependencies. It highlights oversized or logic-heavy tests, weak assertions,
+high mocking, helper indirection, and repeated low-complexity cases that should
+likely become table-driven tests.

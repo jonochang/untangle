@@ -88,6 +88,15 @@ to_module = "src.db.__init__"
 conditions = ["fanout-increase", "new-scc", "scc-growth", "new-architecture-violation"]
 
 # ============================================================
+# [quality.specs] — Test/spec quality guidance
+# ============================================================
+[quality.specs]
+format = "text"          # Output format: text, json
+top = 10                 # Limit worst-example count
+stable_max_score = 10.0  # Max score treated as structurally stable
+split_min_score = 20.0   # Score that upgrades guidance to split
+
+# ============================================================
 # Language-specific settings
 # ============================================================
 [go]
@@ -148,6 +157,17 @@ File inclusion and exclusion patterns (glob syntax).
 ### `[rules.*]`
 
 See [Insights](../insights/README.md) for detailed documentation of each rule.
+
+### `[quality.specs]`
+
+Defaults for `untangle quality specs`.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `format` | string | `"text"` | Output format |
+| `top` | integer | `10` | Limit worst-example count |
+| `stable_max_score` | float | `10.0` | Score at or below this stays `stable` |
+| `split_min_score` | float | `20.0` | Score at or above this upgrades to `split` |
 
 ### `[fail_on]`
 

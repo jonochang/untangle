@@ -159,6 +159,19 @@ fn quality_value(config: &ResolvedConfig, key: &str) -> Option<String> {
                 .top
                 .map_or("(all)".to_string(), |n| n.to_string()),
         ),
+        keys::QUALITY_SPECS_FORMAT => Some(config.quality_specs.format.to_string()),
+        keys::QUALITY_SPECS_TOP => Some(
+            config
+                .quality_specs
+                .top
+                .map_or("(all)".to_string(), |n| n.to_string()),
+        ),
+        keys::QUALITY_SPECS_STABLE_MAX_SCORE => {
+            Some(config.quality_specs.stable_max_score.to_string())
+        }
+        keys::QUALITY_SPECS_SPLIT_MIN_SCORE => {
+            Some(config.quality_specs.split_min_score.to_string())
+        }
         _ => None,
     }
 }
@@ -254,6 +267,7 @@ mod tests {
             diff: Default::default(),
             quality_functions: Default::default(),
             quality_project: Default::default(),
+            quality_specs: Default::default(),
             service_graph: Default::default(),
             rules: ResolvedRules::default(),
             fail_on: Vec::new(),

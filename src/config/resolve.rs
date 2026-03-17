@@ -6,6 +6,7 @@ use crate::config::{
     ResolvedAnalyzeReportConfig, ResolvedArchitectureConfig, ResolvedConfig, ResolvedDiffConfig,
     ResolvedGoConfig, ResolvedGraphConfig, ResolvedPythonConfig, ResolvedQualityConfig,
     ResolvedRubyConfig, ResolvedRules, ResolvedService, ResolvedServiceGraphConfig,
+    ResolvedSpecsQualityConfig,
 };
 use crate::errors::{Result, UntangleError};
 use crate::formats::{
@@ -53,6 +54,7 @@ pub fn resolve_config(working_dir: &Path, cli: &CliOverrides) -> Result<Resolved
         diff: ResolvedDiffConfig::default(),
         quality_functions: ResolvedQualityConfig::default(),
         quality_project: ResolvedQualityConfig::default(),
+        quality_specs: ResolvedSpecsQualityConfig::default(),
         service_graph: ResolvedServiceGraphConfig::default(),
         rules: ResolvedRules::default(),
         fail_on: Vec::new(),
@@ -390,6 +392,24 @@ fn apply_command_defaults(
     if let Some(top) = file.quality.project.top {
         config.quality_project.top = Some(top);
         prov.set(keys::QUALITY_PROJECT_TOP, source.clone());
+    }
+    if let Some(ref format) = file.quality.specs.format {
+        if let Some(parsed) = parse_quality_format(format) {
+            config.quality_specs.format = parsed;
+            prov.set(keys::QUALITY_SPECS_FORMAT, source.clone());
+        }
+    }
+    if let Some(top) = file.quality.specs.top {
+        config.quality_specs.top = Some(top);
+        prov.set(keys::QUALITY_SPECS_TOP, source.clone());
+    }
+    if let Some(stable_max_score) = file.quality.specs.stable_max_score {
+        config.quality_specs.stable_max_score = stable_max_score;
+        prov.set(keys::QUALITY_SPECS_STABLE_MAX_SCORE, source.clone());
+    }
+    if let Some(split_min_score) = file.quality.specs.split_min_score {
+        config.quality_specs.split_min_score = split_min_score;
+        prov.set(keys::QUALITY_SPECS_SPLIT_MIN_SCORE, source.clone());
     }
     if let Some(ref format) = file.service_graph.format {
         if let Some(parsed) = parse_service_graph_format(format) {

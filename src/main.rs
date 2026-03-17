@@ -15,6 +15,7 @@ mod output;
 mod parse;
 mod quality;
 mod service_graph;
+mod spec_quality;
 mod walk;
 
 use clap::Parser;

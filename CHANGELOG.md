@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.3] - 2026-03-17
+
+### Added
+
+- `untangle quality specs`, a new cross-language test/spec quality command for Python, Ruby, Go, and Rust with guidance-first text/JSON output.
+- Baseline workflows for spec quality via `--write-baseline` and `--compare`, including `improved`, `worse`, `mixed`, and `unchanged` verdicts.
+- Mixed-language spec-quality fixtures and integration coverage for guidance, locations, and baseline comparison.
+
+### Changed
+
+- Extended `quality` docs, JSON format docs, and config reference to cover the new `quality specs` surface and `[quality.specs]` defaults.
+- Added a repository design note in `docs/specs/scrap_plan.md` for the SCRAP-like spec quality feature.
+
 ## [0.5.2] - 2026-03-17
 
 ### Added

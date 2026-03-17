@@ -132,6 +132,8 @@ pub struct QualityFileConfig {
     pub functions: QualityCommandFileConfig,
     #[serde(default)]
     pub project: QualityCommandFileConfig,
+    #[serde(default)]
+    pub specs: QualitySpecsFileConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -141,6 +143,14 @@ pub struct QualityCommandFileConfig {
     pub metric: Option<String>,
     pub min_cc: Option<usize>,
     pub min_score: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct QualitySpecsFileConfig {
+    pub format: Option<String>,
+    pub top: Option<usize>,
+    pub stable_max_score: Option<f64>,
+    pub split_min_score: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]

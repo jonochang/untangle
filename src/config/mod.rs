@@ -43,6 +43,10 @@ pub(crate) mod keys {
     pub const QUALITY_FUNCTIONS_TOP: &str = "quality.functions.top";
     pub const QUALITY_PROJECT_FORMAT: &str = "quality.project.format";
     pub const QUALITY_PROJECT_TOP: &str = "quality.project.top";
+    pub const QUALITY_SPECS_FORMAT: &str = "quality.specs.format";
+    pub const QUALITY_SPECS_TOP: &str = "quality.specs.top";
+    pub const QUALITY_SPECS_STABLE_MAX_SCORE: &str = "quality.specs.stable_max_score";
+    pub const QUALITY_SPECS_SPLIT_MIN_SCORE: &str = "quality.specs.split_min_score";
     pub const SERVICE_GRAPH_FORMAT: &str = "service_graph.format";
     pub const RULES_HIGH_FANOUT_ENABLED: &str = "rules.high_fanout.enabled";
     pub const RULES_HIGH_FANOUT_MIN_FANOUT: &str = "rules.high_fanout.min_fanout";
@@ -91,6 +95,10 @@ pub(crate) mod keys {
         QUALITY_FUNCTIONS_TOP,
         QUALITY_PROJECT_FORMAT,
         QUALITY_PROJECT_TOP,
+        QUALITY_SPECS_FORMAT,
+        QUALITY_SPECS_TOP,
+        QUALITY_SPECS_STABLE_MAX_SCORE,
+        QUALITY_SPECS_SPLIT_MIN_SCORE,
         SERVICE_GRAPH_FORMAT,
         RULES_HIGH_FANOUT_ENABLED,
         RULES_HIGH_FANOUT_MIN_FANOUT,
@@ -136,6 +144,7 @@ pub struct ResolvedConfig {
     pub diff: ResolvedDiffConfig,
     pub quality_functions: ResolvedQualityConfig,
     pub quality_project: ResolvedQualityConfig,
+    pub quality_specs: ResolvedSpecsQualityConfig,
     pub service_graph: ResolvedServiceGraphConfig,
 
     // Ruleset
@@ -261,6 +270,25 @@ impl Default for ResolvedQualityConfig {
         Self {
             format: QualityFormat::Json,
             top: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedSpecsQualityConfig {
+    pub format: QualityFormat,
+    pub top: Option<usize>,
+    pub stable_max_score: f64,
+    pub split_min_score: f64,
+}
+
+impl Default for ResolvedSpecsQualityConfig {
+    fn default() -> Self {
+        Self {
+            format: QualityFormat::Text,
+            top: Some(10),
+            stable_max_score: 10.0,
+            split_min_score: 20.0,
         }
     }
 }

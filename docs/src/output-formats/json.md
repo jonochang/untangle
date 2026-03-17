@@ -124,6 +124,29 @@ The `kind` value identifies the command/view that produced the payload.
 }
 ```
 
+```json
+{
+  "kind": "quality.specs",
+  "schema_version": 1,
+  "report": {
+    "summary": {
+      "file_count": 4,
+      "case_count": 4
+    },
+    "files": [
+      {
+        "guidance": {
+          "pressure": "medium",
+          "remediation_mode": "local",
+          "ai_actionability": "medium"
+        }
+      }
+    ],
+    "worst_cases": []
+  }
+}
+```
+
 ## `service-graph`
 
 ```json
