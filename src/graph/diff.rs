@@ -192,11 +192,14 @@ pub fn analyze_repo_diff(request: DiffAnalysisRequest<'_>) -> Result<DiffResult>
     )?;
 
     let diff = compute_raw_diff(&base_graph, &head_graph);
-    let architecture_policy_delta = request
-        .architecture_config
-        .map(|config| compute_architecture_policy_delta(&base_graph, &head_graph, request.root, config));
-    let (verdict, reasons) =
-        evaluate_policies(&diff, architecture_policy_delta.as_ref(), request.conditions);
+    let architecture_policy_delta = request.architecture_config.map(|config| {
+        compute_architecture_policy_delta(&base_graph, &head_graph, request.root, config)
+    });
+    let (verdict, reasons) = evaluate_policies(
+        &diff,
+        architecture_policy_delta.as_ref(),
+        request.conditions,
+    );
     let elapsed_ms = start.elapsed().as_millis() as u64;
     let total_nodes = base_graph.node_count() + head_graph.node_count();
     let modules_per_second = if elapsed_ms > 0 {
@@ -222,7 +225,10 @@ pub fn analyze_repo_diff(request: DiffAnalysisRequest<'_>) -> Result<DiffResult>
     })
 }
 
-fn compare_diff(diff: &RawDiff, architecture_policy_delta: Option<&ArchitecturePolicyDelta>) -> Comparison {
+fn compare_diff(
+    diff: &RawDiff,
+    architecture_policy_delta: Option<&ArchitecturePolicyDelta>,
+) -> Comparison {
     let mut improvements = Vec::new();
     let mut regressions = Vec::new();
 
@@ -957,9 +963,7 @@ fn evaluate_policies(
                 }
             }
             FailCondition::NewArchitectureViolation => {
-                if architecture_policy_delta
-                    .is_some_and(|delta| !delta.new_violations.is_empty())
-                {
+                if architecture_policy_delta.is_some_and(|delta| !delta.new_violations.is_empty()) {
                     reasons.push("new-architecture-violation".to_string());
                 }
             }
@@ -969,8 +973,7 @@ fn evaluate_policies(
                 }
             }
             FailCondition::ArchitectureCycleGrowth => {
-                if architecture_policy_delta
-                    .is_some_and(|delta| !delta.enlarged_cycles.is_empty())
+                if architecture_policy_delta.is_some_and(|delta| !delta.enlarged_cycles.is_empty())
                 {
                     reasons.push("architecture-cycle-growth".to_string());
                 }

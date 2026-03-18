@@ -469,7 +469,10 @@ fn unified_quality_report_json_uses_null_coverage(world: &mut CliWorld) {
     let output = world.output.as_ref().expect("output available");
     assert!(output.status.success(), "command failed");
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).expect("json output");
-    assert_eq!(json["report"]["functions"]["metadata"]["metric"], "complexity");
+    assert_eq!(
+        json["report"]["functions"]["metadata"]["metric"],
+        "complexity"
+    );
     let results = json["report"]["functions"]["results"]
         .as_array()
         .expect("function results");

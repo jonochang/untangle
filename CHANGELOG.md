@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.5] - 2026-03-18
+
+### Fixed
+
+- Keep diff text output tests aligned with the current `DiffResult` shape, including architecture policy deltas, so release and Nix builds compile cleanly under the full test target.
+
+### Changed
+
+- Refactor architecture policy, unified quality, and spec quality internals into smaller wrapped expressions without changing command behavior or output contracts.
+
 ## [0.5.4] - 2026-03-17
 
 ### Fixed

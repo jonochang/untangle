@@ -6,8 +6,8 @@ pub mod schema;
 pub mod show;
 
 use crate::formats::{
-    AnalyzeReportFormat, ArchitectureCheckFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
-    ServiceGraphFormat,
+    AnalyzeReportFormat, ArchitectureCheckFormat, ArchitectureFormat, DiffFormat, GraphFormat,
+    QualityFormat, ServiceGraphFormat,
 };
 use crate::walk::Language;
 use provenance::ProvenanceMap;
@@ -29,8 +29,7 @@ pub(crate) mod keys {
     pub const ANALYZE_ARCHITECTURE_CHECK_FORMAT: &str = "analyze.architecture.check_format";
     pub const ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS: &str =
         "analyze.architecture.fail_on_violations";
-    pub const ANALYZE_ARCHITECTURE_FAIL_ON_CYCLES: &str =
-        "analyze.architecture.fail_on_cycles";
+    pub const ANALYZE_ARCHITECTURE_FAIL_ON_CYCLES: &str = "analyze.architecture.fail_on_cycles";
     pub const ANALYZE_ARCHITECTURE_IGNORED_COMPONENTS: &str =
         "analyze.architecture.ignored_components";
     pub const ANALYZE_ARCHITECTURE_ALLOWED_DEPENDENCIES: &str =

@@ -237,7 +237,11 @@ fn write_diff_header<W: Write>(writer: &mut W, result: &DiffResult) -> Result<()
         comparison_verdict_label(&result.comparison.verdict)
     )?;
     writeln!(writer, "Summary: {}", result.comparison.summary)?;
-    writeln!(writer, "Recommendation: {}", result.comparison.recommendation)?;
+    writeln!(
+        writer,
+        "Recommendation: {}",
+        result.comparison.recommendation
+    )?;
     if !result.comparison.drivers.is_empty() {
         writeln!(writer, "Drivers: {}", result.comparison.drivers.join(", "))?;
     }
@@ -404,8 +408,7 @@ mod tests {
                 verdict: ComparisonVerdict::Worse,
                 summary: "Change appears worse: net edge count increased by 1.".to_string(),
                 recommendation:
-                    "Review the added coupling before treating this change as complete."
-                        .to_string(),
+                    "Review the added coupling before treating this change as complete.".to_string(),
                 drivers: vec!["net edge count increased by 1".to_string()],
             },
             reasons: vec!["new-edge".to_string()],

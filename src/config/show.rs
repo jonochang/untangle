@@ -113,12 +113,9 @@ fn analyze_value(config: &ResolvedConfig, key: &str) -> Option<String> {
         keys::ANALYZE_ARCHITECTURE_CHECK_FORMAT => {
             Some(config.analyze_architecture.check_format.to_string())
         }
-        keys::ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS => Some(
-            config
-                .analyze_architecture
-                .fail_on_violations
-                .to_string(),
-        ),
+        keys::ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS => {
+            Some(config.analyze_architecture.fail_on_violations.to_string())
+        }
         keys::ANALYZE_ARCHITECTURE_FAIL_ON_CYCLES => {
             Some(config.analyze_architecture.fail_on_cycles.to_string())
         }

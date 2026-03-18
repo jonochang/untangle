@@ -118,5 +118,7 @@ fn architecture_init_writes_starter_policy_and_requires_force_to_replace() {
         ])
         .assert()
         .failure()
-        .stderr(predicate::str::contains("Architecture policy already exists"));
+        .stderr(predicate::str::contains(
+            "Architecture policy already exists",
+        ));
 }

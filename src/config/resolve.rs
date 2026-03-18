@@ -10,8 +10,8 @@ use crate::config::{
 };
 use crate::errors::{Result, UntangleError};
 use crate::formats::{
-    AnalyzeReportFormat, ArchitectureCheckFormat, ArchitectureFormat, DiffFormat, GraphFormat, QualityFormat,
-    ServiceGraphFormat,
+    AnalyzeReportFormat, ArchitectureCheckFormat, ArchitectureFormat, DiffFormat, GraphFormat,
+    QualityFormat, ServiceGraphFormat,
 };
 use crate::walk::Language;
 use globset::Glob;
@@ -311,7 +311,10 @@ fn apply_command_defaults(
     }
     if let Some(fail_on_violations) = file.analyze.architecture.fail_on_violations {
         config.analyze_architecture.fail_on_violations = fail_on_violations;
-        prov.set(keys::ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS, source.clone());
+        prov.set(
+            keys::ANALYZE_ARCHITECTURE_FAIL_ON_VIOLATIONS,
+            source.clone(),
+        );
     }
     if let Some(fail_on_cycles) = file.analyze.architecture.fail_on_cycles {
         config.analyze_architecture.fail_on_cycles = fail_on_cycles;
@@ -320,7 +323,10 @@ fn apply_command_defaults(
     if !file.analyze.architecture.ignored_components.is_empty() {
         config.analyze_architecture.ignored_components =
             file.analyze.architecture.ignored_components.clone();
-        prov.set(keys::ANALYZE_ARCHITECTURE_IGNORED_COMPONENTS, source.clone());
+        prov.set(
+            keys::ANALYZE_ARCHITECTURE_IGNORED_COMPONENTS,
+            source.clone(),
+        );
     }
     if !file.analyze.architecture.allowed_dependencies.is_empty() {
         config.analyze_architecture.allowed_dependencies = file
@@ -334,7 +340,10 @@ fn apply_command_defaults(
                 (key.clone(), deps)
             })
             .collect();
-        prov.set(keys::ANALYZE_ARCHITECTURE_ALLOWED_DEPENDENCIES, source.clone());
+        prov.set(
+            keys::ANALYZE_ARCHITECTURE_ALLOWED_DEPENDENCIES,
+            source.clone(),
+        );
     }
     if !file.analyze.architecture.forbidden_dependencies.is_empty() {
         config.analyze_architecture.forbidden_dependencies = file
@@ -347,7 +356,10 @@ fn apply_command_defaults(
                 to: entry.to.clone(),
             })
             .collect();
-        prov.set(keys::ANALYZE_ARCHITECTURE_FORBIDDEN_DEPENDENCIES, source.clone());
+        prov.set(
+            keys::ANALYZE_ARCHITECTURE_FORBIDDEN_DEPENDENCIES,
+            source.clone(),
+        );
     }
     if !file.analyze.architecture.exceptions.is_empty() {
         config.analyze_architecture.exceptions = file

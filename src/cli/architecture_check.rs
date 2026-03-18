@@ -43,8 +43,12 @@ pub fn run(args: &ArchitectureCheckArgs) -> Result<()> {
     let project_root = resolve_project_root(&scan_root, args.target.lang);
     let config = resolve_config(&project_root, &args.to_cli_overrides())?;
     let graph = load_dependency_graph(&scan_root, &project_root, &config)?;
-    let result =
-        policy::check_graph(&graph, &project_root, &config.analyze_architecture, args.level);
+    let result = policy::check_graph(
+        &graph,
+        &project_root,
+        &config.analyze_architecture,
+        args.level,
+    );
 
     let mut stdout = std::io::stdout();
     match args

@@ -1,4 +1,6 @@
-use crate::architecture::{layer_map, project_architecture, project_component_id, ArchitectureOutput};
+use crate::architecture::{
+    layer_map, project_architecture, project_component_id, ArchitectureOutput,
+};
 use crate::config::{ArchitectureException, ResolvedArchitectureConfig};
 use crate::errors::{Result, UntangleError};
 use crate::graph::ir::DepGraph;
@@ -300,7 +302,9 @@ pub fn write_check_text<W: Write>(writer: &mut W, result: &ArchitectureCheckResu
                             location.line,
                             column
                         )?,
-                        None => writeln!(writer, "    {}:{}", location.file.display(), location.line)?,
+                        None => {
+                            writeln!(writer, "    {}:{}", location.file.display(), location.line)?
+                        }
                     }
                 }
             }
@@ -417,15 +421,14 @@ fn collect_projection_data(
         let to_module = graph[edge.target()].name.clone();
         let from = project_component_id(&graph[edge.source()], level);
         let to = project_component_id(&graph[edge.target()], level);
-        if from == to
-            || !active_components.contains(&from)
-            || !active_components.contains(&to)
-        {
+        if from == to || !active_components.contains(&from) || !active_components.contains(&to) {
             continue;
         }
 
         let key = (from.clone(), to.clone());
-        let stats = dependency_stats.entry(key.clone()).or_insert_with(DependencyStats::default);
+        let stats = dependency_stats
+            .entry(key.clone())
+            .or_insert_with(DependencyStats::default);
         stats.count += 1;
         stats.source_location_count += edge.weight().source_locations.len();
 
@@ -530,7 +533,8 @@ fn collect_cycles(
         .into_iter()
         .filter(|members| members.len() > 1)
         .map(|members| {
-            let mut names: Vec<String> = members.into_iter().map(|idx| graph[idx].clone()).collect();
+            let mut names: Vec<String> =
+                members.into_iter().map(|idx| graph[idx].clone()).collect();
             names.sort();
             let member_set: HashSet<_> = names.iter().cloned().collect();
             let edge_count = dependency_stats
@@ -560,7 +564,11 @@ fn feedback_members(edges: &BTreeSet<ComponentEdge>) -> HashSet<String> {
 fn evaluate_dependencies(
     data: &ProjectionData,
     config: &ResolvedArchitectureConfig,
-) -> (Vec<ArchitectureDependency>, Vec<ArchitectureViolation>, usize) {
+) -> (
+    Vec<ArchitectureDependency>,
+    Vec<ArchitectureViolation>,
+    usize,
+) {
     let mut dependencies = Vec::new();
     let mut violations = Vec::new();
     let mut waived_dependency_count = 0;
@@ -615,7 +623,10 @@ fn allowlist_permits(config: &ResolvedArchitectureConfig, from: &str, to: &str) 
     config
         .allowed_dependencies
         .get(from)
-        .map(|deps| deps.iter().any(|dependency| dependency == "*" || dependency == to))
+        .map(|deps| {
+            deps.iter()
+                .any(|dependency| dependency == "*" || dependency == to)
+        })
         .unwrap_or(false)
 }
 
@@ -642,7 +653,11 @@ fn build_violation_evidence(
             source_locations: locations.clone(),
         });
     }
-    evidence.sort_by(|a, b| a.from_module.cmp(&b.from_module).then(a.to_module.cmp(&b.to_module)));
+    evidence.sort_by(|a, b| {
+        a.from_module
+            .cmp(&b.from_module)
+            .then(a.to_module.cmp(&b.to_module))
+    });
     evidence
 }
 
@@ -691,7 +706,10 @@ fn ensure_nested_table(doc: &mut DocumentMut, path: &[&str]) {
         .get_mut(path[0])
         .expect("top-level table should exist");
     for segment in &path[1..] {
-        if !item.as_table().is_some_and(|table| table.contains_key(segment)) {
+        if !item
+            .as_table()
+            .is_some_and(|table| table.contains_key(segment))
+        {
             item[*segment] = Item::Table(Table::new());
         }
         item = &mut item[*segment];

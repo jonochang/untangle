@@ -217,7 +217,9 @@ pub fn run(config: SpecQualityRunConfig) -> Result<SpecQualityReport> {
     let root = config
         .root
         .canonicalize()
-        .map_err(|_| UntangleError::NoFiles { path: config.root.clone() })?;
+        .map_err(|_| UntangleError::NoFiles {
+            path: config.root.clone(),
+        })?;
     let analyses = discover_and_extract(
         &root,
         config.lang,
@@ -230,9 +232,14 @@ pub fn run(config: SpecQualityRunConfig) -> Result<SpecQualityReport> {
 }
 
 pub fn write_baseline(report: &SpecQualityReport, path: Option<&Path>) -> Result<PathBuf> {
-    let target = path
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| report.metadata.root.join("target").join("untangle").join("specs.json"));
+    let target = path.map(Path::to_path_buf).unwrap_or_else(|| {
+        report
+            .metadata
+            .root
+            .join("target")
+            .join("untangle")
+            .join("specs.json")
+    });
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -306,9 +313,17 @@ pub fn write_text<W: Write>(writer: &mut W, report: &SpecQualityReport) -> Resul
             writeln!(writer, "    {}: {}", line.label, line.value)?;
         }
         if let Some(comparison) = &file.comparison {
-            writeln!(writer, "  comparison: {}", comparison_label(comparison.verdict))?;
+            writeln!(
+                writer,
+                "  comparison: {}",
+                comparison_label(comparison.verdict)
+            )?;
             writeln!(writer, "    score-delta: {:.1}", comparison.score_delta)?;
-            writeln!(writer, "    max-score-delta: {:.1}", comparison.max_score_delta)?;
+            writeln!(
+                writer,
+                "    max-score-delta: {:.1}",
+                comparison.max_score_delta
+            )?;
             writeln!(
                 writer,
                 "    harmful-duplication-delta: {}",
@@ -387,7 +402,10 @@ fn discover_and_extract(
     }
 
     let mut analyses = Vec::new();
-    let walker = WalkBuilder::new(root).hidden(false).git_ignore(true).build();
+    let walker = WalkBuilder::new(root)
+        .hidden(false)
+        .git_ignore(true)
+        .build();
     for entry in walker.flatten() {
         let path = entry.path();
         if !path.is_file() {
@@ -520,7 +538,10 @@ fn build_globset(patterns: &[String]) -> Result<globset::GlobSet> {
 
 fn is_test_like_path(relative: &Path, language: Language) -> bool {
     let text = relative.to_string_lossy();
-    let file_name = relative.file_name().and_then(|name| name.to_str()).unwrap_or("");
+    let file_name = relative
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
     match language {
         Language::Python => {
             text.contains("/tests/")
@@ -550,14 +571,22 @@ fn discover_cases(language: Language, source: &str) -> Vec<DiscoveredCase> {
     }
 }
 
-fn discover_helper_names(language: Language, source: &str, cases: &[DiscoveredCase]) -> Vec<String> {
+fn discover_helper_names(
+    language: Language,
+    source: &str,
+    cases: &[DiscoveredCase],
+) -> Vec<String> {
     let case_names: HashSet<&str> = cases.iter().map(|case| case.name.as_str()).collect();
     let mut names = Vec::new();
     for line in source.lines() {
         let trimmed = line.trim();
         let name = match language {
-            Language::Python if trimmed.starts_with("def ") => extract_identifier_after(trimmed, "def "),
-            Language::Ruby if trimmed.starts_with("def ") => extract_identifier_after(trimmed, "def "),
+            Language::Python if trimmed.starts_with("def ") => {
+                extract_identifier_after(trimmed, "def ")
+            }
+            Language::Ruby if trimmed.starts_with("def ") => {
+                extract_identifier_after(trimmed, "def ")
+            }
             Language::Go if trimmed.starts_with("func ") => extract_go_function_name(trimmed),
             Language::Rust if trimmed.starts_with("fn ") || trimmed.contains(" fn ") => {
                 extract_identifier_after(trimmed.split("fn ").nth(1).unwrap_or(""), "")
@@ -565,7 +594,9 @@ fn discover_helper_names(language: Language, source: &str, cases: &[DiscoveredCa
             _ => None,
         };
         if let Some(name) = name {
-            let cleaned = name.trim_end_matches(|c: char| c == '(' || c == '{').to_string();
+            let cleaned = name
+                .trim_end_matches(|c: char| c == '(' || c == '{')
+                .to_string();
             if !case_names.contains(cleaned.as_str()) {
                 names.push(cleaned);
             }
@@ -584,7 +615,11 @@ fn discover_python_cases(source: &str) -> Vec<DiscoveredCase> {
     while current < lines.len() {
         let line = lines[current];
         let indent = indentation(line);
-        while contexts.last().map(|(lvl, _)| *lvl >= indent).unwrap_or(false) {
+        while contexts
+            .last()
+            .map(|(lvl, _)| *lvl >= indent)
+            .unwrap_or(false)
+        {
             contexts.pop();
         }
         let trimmed = line.trim();
@@ -664,8 +699,11 @@ fn discover_rust_cases(source: &str) -> Vec<DiscoveredCase> {
                 fn_idx += 1;
             }
             if fn_idx < lines.len() {
-                let name = extract_identifier_after(lines[fn_idx].trim().split("fn ").nth(1).unwrap_or(""), "")
-                    .unwrap_or_default();
+                let name = extract_identifier_after(
+                    lines[fn_idx].trim().split("fn ").nth(1).unwrap_or(""),
+                    "",
+                )
+                .unwrap_or_default();
                 let end = find_brace_block_end(&lines, fn_idx);
                 cases.push(DiscoveredCase {
                     name,
@@ -887,14 +925,24 @@ fn summarize_file(cases: &[SpecCaseReport]) -> SpecFileSummary {
         case_count: cases.len(),
         avg_score: ((total / cases.len() as f64) * 10.0).round() / 10.0,
         max_score: (max_score * 10.0).round() / 10.0,
-        zero_assertion_cases: cases.iter().filter(|case| case.assertion_count == 0).count(),
-        low_assertion_cases: cases.iter().filter(|case| case.assertion_count <= 1).count(),
+        zero_assertion_cases: cases
+            .iter()
+            .filter(|case| case.assertion_count == 0)
+            .count(),
+        low_assertion_cases: cases
+            .iter()
+            .filter(|case| case.assertion_count <= 1)
+            .count(),
         mocking_heavy_cases: cases.iter().filter(|case| case.mock_count >= 3).count(),
         branching_cases: cases.iter().filter(|case| case.branch_count > 0).count(),
         harmful_duplication_score: signatures,
         case_matrix_candidates: cases
             .iter()
-            .filter(|case| case.smells.iter().any(|smell| smell == "table-driven-candidate"))
+            .filter(|case| {
+                case.smells
+                    .iter()
+                    .any(|smell| smell == "table-driven-candidate")
+            })
             .count(),
     }
 }
@@ -912,7 +960,11 @@ fn repeated_signatures(cases: &[SpecCaseReport]) -> usize {
         }
         *counts.entry(parts.join(":")).or_insert(0) += 1;
     }
-    counts.values().filter(|count| **count > 1).map(|count| count - 1).sum()
+    counts
+        .values()
+        .filter(|count| **count > 1)
+        .map(|count| count - 1)
+        .sum()
 }
 
 fn build_guidance(
@@ -921,7 +973,10 @@ fn build_guidance(
     cases: &[SpecCaseReport],
     defaults: &ResolvedSpecsQualityConfig,
 ) -> SpecGuidance {
-    let severe_cases = cases.iter().filter(|case| case.score >= defaults.split_min_score).count();
+    let severe_cases = cases
+        .iter()
+        .filter(|case| case.score >= defaults.split_min_score)
+        .count();
     let pressure = if summary.max_score >= defaults.split_min_score || severe_cases >= 2 {
         SpecPressure::High
     } else if summary.max_score <= defaults.stable_max_score
@@ -1003,8 +1058,7 @@ fn build_guidance(
         how.push(SpecGuidanceAction {
             confidence: 2,
             label: "MEDIUM".to_string(),
-            text: "Reduce mocking and move more coverage toward behavior-level checks."
-                .to_string(),
+            text: "Reduce mocking and move more coverage toward behavior-level checks.".to_string(),
         });
     }
     if summary.harmful_duplication_score > 0 {
@@ -1019,8 +1073,7 @@ fn build_guidance(
         how.push(SpecGuidanceAction {
             confidence: 2,
             label: "MEDIUM".to_string(),
-            text: "Convert repeated low-complexity cases into table-driven tests."
-                .to_string(),
+            text: "Convert repeated low-complexity cases into table-driven tests.".to_string(),
         });
     }
     if how.is_empty() {
@@ -1054,10 +1107,22 @@ fn summarize_report(files: &[SpecFileReport]) -> SpecQualitySummary {
         file_count,
         case_count,
         avg_score: (avg_score * 10.0).round() / 10.0,
-        max_score: files.iter().map(|file| file.summary.max_score).fold(0.0, f64::max),
-        zero_assertion_cases: files.iter().map(|file| file.summary.zero_assertion_cases).sum(),
-        low_assertion_cases: files.iter().map(|file| file.summary.low_assertion_cases).sum(),
-        mocking_heavy_cases: files.iter().map(|file| file.summary.mocking_heavy_cases).sum(),
+        max_score: files
+            .iter()
+            .map(|file| file.summary.max_score)
+            .fold(0.0, f64::max),
+        zero_assertion_cases: files
+            .iter()
+            .map(|file| file.summary.zero_assertion_cases)
+            .sum(),
+        low_assertion_cases: files
+            .iter()
+            .map(|file| file.summary.low_assertion_cases)
+            .sum(),
+        mocking_heavy_cases: files
+            .iter()
+            .map(|file| file.summary.mocking_heavy_cases)
+            .sum(),
         branching_cases: files.iter().map(|file| file.summary.branching_cases).sum(),
         harmful_duplication_score: files
             .iter()
@@ -1067,8 +1132,11 @@ fn summarize_report(files: &[SpecFileReport]) -> SpecQualitySummary {
 }
 
 fn compare_reports(current: &mut SpecQualityReport, baseline: &SpecQualityReport) {
-    let baseline_by_path: HashMap<&PathBuf, &SpecFileReport> =
-        baseline.files.iter().map(|file| (&file.path, file)).collect();
+    let baseline_by_path: HashMap<&PathBuf, &SpecFileReport> = baseline
+        .files
+        .iter()
+        .map(|file| (&file.path, file))
+        .collect();
     let mut improved = 0usize;
     let mut worse = 0usize;
     let mut mixed = 0usize;
@@ -1109,7 +1177,8 @@ fn compare_file(current: &SpecFileSummary, previous: &SpecFileSummary) -> SpecFi
     let max_score_delta = current.max_score - previous.max_score;
     let harmful_duplication_delta =
         current.harmful_duplication_score as isize - previous.harmful_duplication_score as isize;
-    let verdict = if score_delta <= -2.0 && max_score_delta <= 0.0 && harmful_duplication_delta <= 0 {
+    let verdict = if score_delta <= -2.0 && max_score_delta <= 0.0 && harmful_duplication_delta <= 0
+    {
         SpecComparisonVerdict::Improved
     } else if score_delta >= 2.0 || max_score_delta > 0.0 || harmful_duplication_delta > 0 {
         if score_delta < 0.0 {
@@ -1137,20 +1206,30 @@ fn count_assertions(language: Language, snippet: &str) -> usize {
     let needles = match language {
         Language::Python => vec!["assert ", "self.assert", "pytest.raises"],
         Language::Ruby => vec!["expect(", "assert_", "assert ", "refute_", "raise_error"],
-        Language::Go => vec!["t.Fatal", "t.Fatalf", "t.Error", "t.Errorf", "require.", "assert."],
+        Language::Go => vec![
+            "t.Fatal", "t.Fatalf", "t.Error", "t.Errorf", "require.", "assert.",
+        ],
         Language::Rust => vec!["assert!", "assert_eq!", "assert_ne!", "matches!"],
     };
-    needles.into_iter().map(|needle| count_token(snippet, needle)).sum()
+    needles
+        .into_iter()
+        .map(|needle| count_token(snippet, needle))
+        .sum()
 }
 
 fn count_branches(language: Language, snippet: &str) -> usize {
     let needles = match language {
         Language::Python => vec!["if ", "elif ", "for ", "while ", " except", " and ", " or "],
-        Language::Ruby => vec!["if ", "elsif ", "unless ", "while ", "until ", " when ", " and ", " or "],
+        Language::Ruby => vec![
+            "if ", "elsif ", "unless ", "while ", "until ", " when ", " and ", " or ",
+        ],
         Language::Go => vec!["if ", "for ", "case ", "&&", "||"],
         Language::Rust => vec!["if ", "while ", "for ", "match ", "&&", "||"],
     };
-    needles.into_iter().map(|needle| count_token(snippet, needle)).sum()
+    needles
+        .into_iter()
+        .map(|needle| count_token(snippet, needle))
+        .sum()
 }
 
 fn count_setup_depth(language: Language, snippet: &str) -> usize {
@@ -1160,17 +1239,30 @@ fn count_setup_depth(language: Language, snippet: &str) -> usize {
         Language::Go => vec!["t.Run(", "setup", "defer "],
         Language::Rust => vec!["let ", "setup", "arrange", "mod fixtures"],
     };
-    needles.into_iter().map(|needle| count_token(snippet, needle)).sum()
+    needles
+        .into_iter()
+        .map(|needle| count_token(snippet, needle))
+        .sum()
 }
 
 fn count_mocks(language: Language, snippet: &str) -> usize {
     let needles = match language {
-        Language::Python => vec!["mock.", "Mock(", "MagicMock(", "patch(", "monkeypatch", "stub"],
+        Language::Python => vec![
+            "mock.",
+            "Mock(",
+            "MagicMock(",
+            "patch(",
+            "monkeypatch",
+            "stub",
+        ],
         Language::Ruby => vec!["double(", "allow(", "receive(", "stub(", "mock("],
         Language::Go => vec!["gomock", "mock.", "fake", "stub"],
         Language::Rust => vec!["mockall", "mock_", "double", "stub"],
     };
-    needles.into_iter().map(|needle| count_token(snippet, needle)).sum()
+    needles
+        .into_iter()
+        .map(|needle| count_token(snippet, needle))
+        .sum()
 }
 
 fn count_helper_calls(snippet: &str, helper_names: &[String], current_name: &str) -> usize {
@@ -1204,7 +1296,11 @@ fn extract_identifier_after(text: &str, prefix: &str) -> Option<String> {
         .chars()
         .take_while(|ch| ch.is_alphanumeric() || *ch == '_' || *ch == ':' || *ch == '.')
         .collect();
-    if ident.is_empty() { None } else { Some(ident) }
+    if ident.is_empty() {
+        None
+    } else {
+        Some(ident)
+    }
 }
 
 fn extract_go_function_name(text: &str) -> Option<String> {
@@ -1219,7 +1315,13 @@ fn extract_go_function_name(text: &str) -> Option<String> {
 }
 
 fn extract_quoted_name(text: &str) -> Option<String> {
-    let quote = if text.contains('"') { '"' } else if text.contains('\'') { '\'' } else { return None };
+    let quote = if text.contains('"') {
+        '"'
+    } else if text.contains('\'') {
+        '\''
+    } else {
+        return None;
+    };
     let mut parts = text.split(quote);
     parts.next()?;
     parts.next().map(|s| s.to_string())

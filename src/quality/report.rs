@@ -2,8 +2,12 @@ use crate::analysis_context::resolve_project_root;
 use crate::analysis_report::build_analysis_snapshot;
 use crate::architecture::{
     self,
-    policy::{self, ArchitectureCheckResult, ArchitectureComponentMetric, ArchitectureCycle, ArchitectureVerdict},
-    ArchitectureEdge, ArchitectureEdgeRef, ArchitectureLayer, ArchitectureMetadata, ArchitectureNode,
+    policy::{
+        self, ArchitectureCheckResult, ArchitectureComponentMetric, ArchitectureCycle,
+        ArchitectureVerdict,
+    },
+    ArchitectureEdge, ArchitectureEdgeRef, ArchitectureLayer, ArchitectureMetadata,
+    ArchitectureNode,
 };
 use crate::config::ResolvedConfig;
 use crate::errors::Result;
@@ -316,8 +320,14 @@ fn architecture_policy_summary(
     check: &ArchitectureCheckResult,
     limit: Option<usize>,
 ) -> Option<ArchitecturePolicySummary> {
-    let has_policy = !resolved.analyze_architecture.allowed_dependencies.is_empty()
-        || !resolved.analyze_architecture.forbidden_dependencies.is_empty()
+    let has_policy = !resolved
+        .analyze_architecture
+        .allowed_dependencies
+        .is_empty()
+        || !resolved
+            .analyze_architecture
+            .forbidden_dependencies
+            .is_empty()
         || !resolved.analyze_architecture.exceptions.is_empty()
         || !resolved.analyze_architecture.ignored_components.is_empty();
     if !has_policy {
@@ -371,7 +381,11 @@ fn build_guidance(
     let distinct_priority_categories = distinct_priority_categories
         .iter()
         .enumerate()
-        .filter(|(idx, label)| distinct_priority_categories[..*idx].iter().all(|seen| seen != *label))
+        .filter(|(idx, label)| {
+            distinct_priority_categories[..*idx]
+                .iter()
+                .all(|seen| seen != *label)
+        })
         .count();
     let remediation_mode = if severe_domains >= 2 || distinct_priority_categories >= 2 {
         GuidanceRemediationMode::Split
@@ -775,7 +789,11 @@ pub fn write_text<W: Write>(writer: &mut W, report: &UnifiedQualityReport) -> Re
 fn write_guidance_section<W: Write>(writer: &mut W, guidance: &GuidanceSection) -> Result<()> {
     writeln!(writer, "Guidance")?;
     writeln!(writer, "--------")?;
-    writeln!(writer, "Pressure:         {}", guidance_pressure_label(guidance.pressure))?;
+    writeln!(
+        writer,
+        "Pressure:         {}",
+        guidance_pressure_label(guidance.pressure)
+    )?;
     writeln!(
         writer,
         "Remediation Mode: {}",
