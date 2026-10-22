@@ -22,11 +22,11 @@ rustPlatform.buildRustPackage (finalAttrs: {
     owner = "jonochang";
     repo = "untangle";
     # Pin to immutable commit instead of mutable tag archives.
-    rev = "8cee265cec0890d2fb66215248ef6421bb545eed";
-    hash = "sha256-zHhk6f50bjiRi0PnY3YWcVvlzhj8q1NLroPxDVYOP7o=";
+    rev = "1928bd891910aed9ef54736396d9bac2f5b09ef0";
+    hash = "sha256-LJxGMJsCvZqHEqGoKOQZTw4c5ypIHzAOFeuWEQR8TaQ=";
   };
 
-  cargoHash = "sha256-5ktLAOiQJkreKVlnsEOGXF8Amrhc56BAYod4ziFVQYc=";
+  cargoHash = "sha256-rOz04ou/+OK/vC53jBePuJVa5Qc9y1cJiU8XXje5eNI=";
 
   nativeBuildInputs = [
     pkg-config
